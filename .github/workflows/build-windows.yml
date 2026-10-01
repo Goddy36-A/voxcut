@@ -34,9 +34,12 @@ jobs:
           Copy-Item (Join-Path $bin.DirectoryName "ffprobe.exe") bin\ffprobe.exe
           bin\ffmpeg.exe -version | Select-Object -First 1
 
-      - name: Test engine
-        run: python tests/test_engine.py
+      - name: Test engine and GUI
+        run: |
+          python tests/test_engine.py
+          python tests/test_gui.py
         env:
+          QT_QPA_PLATFORM: offscreen
           PATH: ${{ github.workspace }}\bin;${{ env.PATH }}
 
       - name: Build EXE

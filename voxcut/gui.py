@@ -116,7 +116,7 @@ class Main(QMainWindow):
         # ---- right: tabs ----
         tabs = QTabWidget()
         tabs.addTab(self.audio_tab(), "Audio / Voice")
-        tabs.addTab(self.video_tab(), "Format & Quality")
+        tabs.addTab(self.video_tab(), "Format && Quality")
         tabs.addTab(self.extras_tab(), "Intro / Outro")
         outer.addWidget(tabs, 4)
         self.setAcceptDrops(True)
