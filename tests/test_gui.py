@@ -24,7 +24,7 @@ w.worker.all_done.connect(loop.quit)
 QTimer.singleShot(60000, loop.quit)
 loop.exec()
 out = os.path.join(d, "clip_enhanced.mp4")
-print(w.log.toPlainText())
+print(w.log.toPlainText().encode('ascii', 'replace').decode())
 assert os.path.exists(out), "no output"
 i = media_info(out)
 print(i)

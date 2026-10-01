@@ -40,7 +40,7 @@ jobs:
           python tests/test_gui.py
         env:
           QT_QPA_PLATFORM: offscreen
-          PATH: ${{ github.workspace }}\bin;${{ env.PATH }}
+          PYTHONUTF8: "1"
 
       - name: Build EXE
         run: >
