@@ -43,10 +43,14 @@ jobs:
           PYTHONUTF8: "1"
 
       - name: Build EXE
-        run: >
-          pyinstaller --noconfirm --onefile --windowed --name VoxCut
-          --add-binary "bin\ffmpeg.exe;bin" --add-binary "bin\ffprobe.exe;bin"
-          main.py
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --onefile --windowed --name VoxCut `
+            --icon assets\icon.ico --add-data "assets;assets" `
+            --add-binary "bin\ffmpeg.exe;bin" --add-binary "bin\ffprobe.exe;bin" `
+            --hidden-import PySide6.QtMultimedia --hidden-import PySide6.QtMultimediaWidgets `
+            main.py
+          Copy-Item dist\VoxCut.exe "dist\VoxCut-${{ github.ref_name }}.exe"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -57,4 +61,4 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/VoxCut.exe
+          files: dist/VoxCut-${{ github.ref_name }}.exe

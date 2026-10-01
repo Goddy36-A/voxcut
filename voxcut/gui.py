@@ -1,42 +1,177 @@
+import ctypes
 import os
 import sys
+import tempfile
 
-from PySide6.QtCore import QThread, Signal, Qt
-from PySide6.QtWidgets import (QApplication, QCheckBox, QColorDialog, QComboBox, QFileDialog, QFormLayout,
-                               QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget, QMainWindow,
-                               QMessageBox, QProgressBar, QPushButton, QSlider, QSpinBox, QTabWidget,
-                               QTextEdit, QVBoxLayout, QWidget)
+from PySide6.QtCore import QSettings, Qt, QThread, QUrl, Signal
+from PySide6.QtGui import QColor, QDesktopServices, QIcon, QPixmap
+from PySide6.QtWidgets import (QApplication, QCheckBox, QColorDialog, QComboBox, QDialog, QDoubleSpinBox,
+                               QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
+                               QMainWindow, QMenu, QMessageBox, QProgressBar, QPushButton, QScrollArea, QSlider,
+                               QSpinBox, QStackedWidget, QSystemTrayIcon, QTextEdit, QVBoxLayout, QWidget)
 
 from . import __version__
-from .engine import (CODECS, COMPRESSION, FIT_MODES, ORIENTATIONS, QUALITIES, Job, Settings, build_command)
+from .engine import (AUDIO_FORMATS, CODECS, COLOR_PRESETS, COMPRESSION, FIT_MODES, ORIENTATIONS, QUALITIES,
+                     WM_POSITIONS, Job, Settings, build_command, plan_add_audio, plan_extract_audio,
+                     plan_remove_audio)
+from .paths import asset_path
+from .theme import ACCENT_PRESETS, THEMES, apply_theme
 
 VIDEO_FILTER = "Videos (*.mp4 *.mov *.mkv *.avi *.webm *.m4v *.flv *.wmv *.mts *.ts);;All files (*)"
+AUDIO_FILTER = "Audio (*.mp3 *.wav *.m4a *.aac *.flac *.ogg *.wma);;All files (*)"
+IMAGE_FILTER = "Images (*.png *.jpg *.jpeg *.webp *.bmp)"
+
+PRESETS = {
+    "Custom": None,
+    "YouTube - Full HD landscape": dict(orient="Landscape 16:9", quality="1080p (Full HD)", comp="Balanced", lufs=-14),
+    "TikTok / Reels / Shorts - portrait": dict(orient="Portrait 9:16", quality="1080p (Full HD)", comp="Balanced", lufs=-14),
+    "WhatsApp status - small file": dict(orient="Portrait 9:16", quality="720p (HD)", comp="Smallest file", lufs=-16),
+    "Podcast / voice clean-up (audio only)": dict(audio_only=True, lufs=-16, strength=15),
+    "Maximum quality - 4K archive": dict(orient="Keep original", quality="2160p (4K)",
+                                         comp="Maximum quality (big file)", codec="H.265 / HEVC (smaller)"),
+}
 
 
+def keep_awake(on: bool):
+    """Stop Windows sleeping while a long render is running."""
+    if os.name == "nt":
+        try:
+            ctypes.windll.kernel32.SetThreadExecutionState(0x80000001 if on else 0x80000000)
+        except Exception:  # noqa: BLE001
+            pass
+
+
+# --------------------------------------------------------------------------- small UI helpers
+def card(title, subtitle=None):
+    f = QFrame()
+    f.setObjectName("card")
+    lay = QVBoxLayout(f)
+    lay.setContentsMargins(18, 16, 18, 18)
+    lay.setSpacing(11)
+    t = QLabel(title)
+    t.setObjectName("h")
+    lay.addWidget(t)
+    if subtitle:
+        s = QLabel(subtitle)
+        s.setObjectName("muted")
+        s.setWordWrap(True)
+        lay.addWidget(s)
+    return f, lay
+
+
+def row(label, widget, tip=None):
+    w = QWidget()
+    h = QHBoxLayout(w)
+    h.setContentsMargins(0, 0, 0, 0)
+    h.setSpacing(10)
+    lab = QLabel(label)
+    lab.setMinimumWidth(128)
+    lab.setMaximumWidth(150)
+    lab.setWordWrap(True)
+    h.addWidget(lab)
+    h.addWidget(widget, 1)
+    if tip:
+        w.setToolTip(tip)
+    return w
+
+
+def slider(lo, hi, val, fmt=lambda v: str(v)):
+    s = QSlider(Qt.Horizontal)
+    s.setRange(lo, hi)
+    s.setValue(val)
+    lab = QLabel()
+    lab.setMinimumWidth(62)
+    lab.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+    s.valueChanged.connect(lambda v: lab.setText(fmt(v)))
+    lab.setText(fmt(val))
+    w = QWidget()
+    h = QHBoxLayout(w)
+    h.setContentsMargins(0, 0, 0, 0)
+    h.addWidget(s, 1)
+    h.addWidget(lab)
+    return w, s
+
+
+def combo(items, current=None):
+    c = QComboBox()
+    c.addItems(list(items))
+    if current:
+        c.setCurrentText(current)
+    return c
+
+
+def spin(lo, hi, val=0.0, suffix=" s", step=0.5):
+    d = QDoubleSpinBox()
+    d.setRange(lo, hi)
+    d.setValue(val)
+    d.setSuffix(suffix)
+    d.setSingleStep(step)
+    d.setDecimals(1)
+    return d
+
+
+class FilePick(QWidget):
+    def __init__(self, filt, placeholder="(none)"):
+        super().__init__()
+        self.filt = filt
+        self.edit = QLineEdit()
+        self.edit.setPlaceholderText(placeholder)
+        b = QPushButton("Browse")
+        c = QPushButton("Clear")
+        c.setObjectName("ghost")
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        for w in (self.edit, b, c):
+            lay.addWidget(w)
+        b.clicked.connect(self.pick)
+        c.clicked.connect(self.edit.clear)
+
+    def pick(self):
+        p, _ = QFileDialog.getOpenFileName(self, "Select file", "", self.filt)
+        if p:
+            self.edit.setText(p)
+
+    def value(self):
+        v = self.edit.text().strip()
+        return v or None
+
+
+def make_page(*cards):
+    inner = QWidget()
+    lay = QVBoxLayout(inner)
+    lay.setContentsMargins(0, 0, 8, 0)
+    lay.setSpacing(12)
+    for c in cards:
+        lay.addWidget(c)
+    lay.addStretch(1)
+    sa = QScrollArea()
+    sa.setWidgetResizable(True)
+    sa.setFrameShape(QFrame.NoFrame)
+    sa.setWidget(inner)
+    return sa
+
+
+# --------------------------------------------------------------------------- background worker
 class Worker(QThread):
-    progress = Signal(int, float)      # file index, percent
-    file_done = Signal(int, str)       # file index, message ("OK" or error)
+    progress = Signal(int, float)
+    item_done = Signal(int, str, str)     # task index, "OK"/error text, output path
     all_done = Signal()
 
-    def __init__(self, files, outdir, settings, suffix):
+    def __init__(self, tasks):
         super().__init__()
-        self.files, self.outdir, self.settings, self.suffix = files, outdir, settings, suffix
-        self.job = None
-        self.stop = False
+        self.tasks, self.job, self.stop = tasks, None, False
 
     def run(self):
-        for i, f in enumerate(self.files):
+        for i, (_label, thunk) in enumerate(self.tasks):
             if self.stop:
                 break
-            base = os.path.splitext(os.path.basename(f))[0]
-            out = os.path.join(self.outdir or os.path.dirname(f), f"{base}{self.suffix}.mp4")
             try:
-                cmd, dur = build_command(f, out, self.settings)
+                cmd, dur, out = thunk()
                 self.job = Job(cmd, dur)
                 self.job.run(lambda p, i=i: self.progress.emit(i, p))
-                self.file_done.emit(i, "OK")
+                self.item_done.emit(i, "OK", out)
             except Exception as e:  # noqa: BLE001
-                self.file_done.emit(i, str(e))
+                self.item_done.emit(i, str(e), "")
         self.all_done.emit()
 
     def cancel(self):
@@ -45,164 +180,514 @@ class Worker(QThread):
             self.job.cancel()
 
 
-class FilePick(QWidget):
-    def __init__(self, filt):
-        super().__init__()
-        self.edit = QLineEdit()
-        self.edit.setPlaceholderText("(none)")
-        b = QPushButton("Browse…")
-        c = QPushButton("Clear")
-        lay = QHBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
-        for w in (self.edit, b, c):
-            lay.addWidget(w)
-        b.clicked.connect(lambda: self.edit.setText(QFileDialog.getOpenFileName(self, "Select file", "", filt)[0] or self.edit.text()))
-        c.clicked.connect(self.edit.clear)
+# --------------------------------------------------------------------------- preview window
+class PreviewDialog(QDialog):
+    def __init__(self, path, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Preview")
+        self.resize(900, 600)
+        self.path, self.player = path, None
+        lay = QVBoxLayout(self)
+        self.note = QLabel("Preview is a quick low-resolution render (about 480p). The final file will be sharper.")
+        self.note.setObjectName("muted")
+        self.note.setWordWrap(True)
+        try:
+            from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
+            from PySide6.QtMultimediaWidgets import QVideoWidget
+            self.video = QVideoWidget()
+            self.video.setMinimumHeight(380)
+            lay.addWidget(self.video, 1)
+            self.player = QMediaPlayer(self)
+            self.audio = QAudioOutput(self)
+            self.player.setAudioOutput(self.audio)
+            self.player.setVideoOutput(self.video)
+            self.player.setSource(QUrl.fromLocalFile(path))
+            self.player.errorOccurred.connect(self._error)
+            self.player.positionChanged.connect(self._pos)
+            self.player.durationChanged.connect(lambda d: self.seek.setRange(0, d))
+        except Exception as e:  # noqa: BLE001
+            self.player = None
+            self.note.setText(f"Built-in player unavailable ({e}). Use 'Open in system player'.")
+        lay.addWidget(self.note)
+        ctl = QHBoxLayout()
+        self.play = QPushButton("Pause")
+        self.play.clicked.connect(self.toggle)
+        self.seek = QSlider(Qt.Horizontal)
+        self.seek.sliderMoved.connect(lambda v: self.player and self.player.setPosition(v))
+        ext = QPushButton("Open in system player")
+        ext.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(path)))
+        close = QPushButton("Close")
+        close.clicked.connect(self.close)
+        for w in (self.play, self.seek, ext, close):
+            ctl.addWidget(w, 1 if w is self.seek else 0)
+        lay.addLayout(ctl)
+        if self.player:
+            self.player.play()
 
-    def value(self):
-        return self.edit.text().strip() or None
+    def _pos(self, p):
+        if not self.seek.isSliderDown():
+            self.seek.setValue(p)
+
+    def toggle(self):
+        if not self.player:
+            return
+        if self.player.playbackState() == self.player.PlaybackState.PlayingState:
+            self.player.pause()
+            self.play.setText("Play")
+        else:
+            self.player.play()
+            self.play.setText("Pause")
+
+    def _error(self, *_):
+        self.note.setText("The built-in player could not play this file - opening it in your default player instead.")
+        QDesktopServices.openUrl(QUrl.fromLocalFile(self.path))
+
+    def done(self, r):
+        if self.player:
+            self.player.stop()
+        super().done(r)
 
 
+# --------------------------------------------------------------------------- main window
 class Main(QMainWindow):
-    def __init__(self):
+    def __init__(self, app):
         super().__init__()
-        self.setWindowTitle(f"VoxCut {__version__} – offline video & voice enhancer")
-        self.resize(980, 720)
+        self.app = app
+        self.qs = QSettings("VoxCut", "VoxCut")
         self.worker = None
         self.bg_color = "black"
+        self.last_out_dir = ""
+        self.results = []
+        self.after = None
+        self.pv_dialog = None
+        self.pv_n = 0
+        self.setWindowTitle(f"VoxCut {__version__}")
+        self.setWindowIcon(QIcon(asset_path("icon.png")))
+        self.resize(1260, 800)
+        self.setMinimumSize(1000, 660)
+        self.setAcceptDrops(True)
 
         root = QWidget()
+        root.setObjectName("root")
         self.setCentralWidget(root)
-        outer = QHBoxLayout(root)
+        outer = QVBoxLayout(root)
+        outer.setContentsMargins(18, 14, 18, 16)
+        outer.setSpacing(12)
+        outer.addWidget(self._header())
+        body = QHBoxLayout()
+        body.setSpacing(14)
+        body.addWidget(self._left(), 5)
+        body.addWidget(self._right(), 6)
+        outer.addLayout(body, 1)
 
-        # ---- left: files ----
-        left = QVBoxLayout()
-        left.addWidget(QLabel("<b>Videos to process</b> (drag & drop or Add)"))
+        self.tray = None
+        if QSystemTrayIcon.isSystemTrayAvailable():
+            self.tray = QSystemTrayIcon(QIcon(asset_path("icon.png")), self)
+            m = QMenu()
+            m.addAction("Show VoxCut", self._restore)
+            m.addAction("Quit", self.app.quit)
+            self.tray.setContextMenu(m)
+            self.tray.activated.connect(lambda *_: self._restore())
+            self.tray.show()
+        self.restyle()
+
+    # ---------------- layout
+    def _header(self):
+        w = QWidget()
+        h = QHBoxLayout(w)
+        h.setContentsMargins(2, 0, 2, 0)
+        logo = QLabel()
+        logo.setPixmap(QPixmap(asset_path("icon.png")).scaled(46, 46, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        h.addWidget(logo)
+        col = QVBoxLayout()
+        col.setSpacing(0)
+        t = QLabel("VoxCut")
+        t.setObjectName("title")
+        st = QLabel("Offline video & voice studio")
+        st.setObjectName("muted")
+        col.addWidget(t)
+        col.addWidget(st)
+        h.addLayout(col)
+        badge = QLabel(f"v{__version__}")
+        badge.setObjectName("badge")
+        h.addWidget(badge, 0, Qt.AlignVCenter)
+        h.addStretch(1)
+        h.addWidget(QLabel("Quick preset"))
+        self.preset = combo(PRESETS)
+        self.preset.setMinimumWidth(270)
+        self.preset.activated.connect(self.apply_preset)
+        h.addWidget(self.preset)
+        return w
+
+    def _left(self):
+        f, lay = card("Queue", "Drag & drop videos here, or use Add. Everything runs locally on your PC.")
         self.listw = QListWidget()
-        self.listw.setAcceptDrops(True)
-        left.addWidget(self.listw, 1)
-        row = QHBoxLayout()
-        for text, fn in (("Add videos…", self.add_files), ("Remove selected", self.remove_sel), ("Clear", self.listw.clear)):
+        self.listw.setObjectName("queue")
+        self.listw.setSelectionMode(QListWidget.ExtendedSelection)
+        lay.addWidget(self.listw, 1)
+        r = QHBoxLayout()
+        for text, fn in (("Add videos", self.add_files), ("Remove", self.remove_sel), ("Clear", self.listw.clear)):
             b = QPushButton(text)
             b.clicked.connect(fn)
-            row.addWidget(b)
-        left.addLayout(row)
-        outrow = QHBoxLayout()
+            r.addWidget(b)
+        lay.addLayout(r)
+        orow = QHBoxLayout()
         self.outdir = QLineEdit()
         self.outdir.setPlaceholderText("Output folder (default: next to each video)")
-        ob = QPushButton("Output folder…")
-        ob.clicked.connect(lambda: self.outdir.setText(QFileDialog.getExistingDirectory(self, "Output folder") or self.outdir.text()))
-        outrow.addWidget(self.outdir)
-        outrow.addWidget(ob)
-        left.addLayout(outrow)
+        self.outdir.setText(self.qs.value("outdir", ""))
+        ob = QPushButton("Choose")
+        ob.clicked.connect(self.pick_outdir)
+        orow.addWidget(self.outdir, 1)
+        orow.addWidget(ob)
+        lay.addLayout(orow)
         self.log = QTextEdit()
         self.log.setReadOnly(True)
-        self.log.setMaximumHeight(150)
-        left.addWidget(self.log)
+        self.log.setFixedHeight(104)
+        self.log.setPlaceholderText("Activity log")
+        lay.addWidget(self.log)
+
+        pr = QHBoxLayout()
+        self.btn_preview = QPushButton("Preview")
+        self.btn_preview.setToolTip("Quick low-res sample with all your settings (main video only).")
+        self.btn_preview.clicked.connect(self.preview)
+        self.p_start = spin(0, 36000, 0, " s", 1)
+        self.p_len = spin(2, 60, 10, " s", 1)
+        pr.addWidget(self.btn_preview)
+        pr.addWidget(QLabel("from"))
+        pr.addWidget(self.p_start)
+        pr.addWidget(QLabel("for"))
+        pr.addWidget(self.p_len)
+        pr.addStretch(1)
+        lay.addLayout(pr)
+
         self.bar = QProgressBar()
-        left.addWidget(self.bar)
-        brow = QHBoxLayout()
-        self.go = QPushButton("▶  Process all")
-        self.go.setStyleSheet("font-weight:bold;padding:8px;")
-        self.go.clicked.connect(self.start)
+        self.bar.setValue(0)
+        lay.addWidget(self.bar)
+        self.status = QLabel("Ready")
+        self.status.setObjectName("muted")
+        lay.addWidget(self.status)
+        br = QHBoxLayout()
+        self.go = QPushButton("Process all")
+        self.go.setObjectName("primary")
+        self.go.clicked.connect(self.process)
         self.cancel = QPushButton("Cancel")
         self.cancel.setEnabled(False)
         self.cancel.clicked.connect(lambda: self.worker and self.worker.cancel())
-        brow.addWidget(self.go, 3)
-        brow.addWidget(self.cancel, 1)
-        left.addLayout(brow)
-        outer.addLayout(left, 5)
+        self.open_btn = QPushButton("Open output folder")
+        self.open_btn.setObjectName("ghost")
+        self.open_btn.clicked.connect(self.open_out)
+        br.addWidget(self.go, 3)
+        br.addWidget(self.cancel, 1)
+        br.addWidget(self.open_btn, 1)
+        lay.addLayout(br)
+        fr = QHBoxLayout()
+        self.c_notify = QCheckBox("Notify me when finished")
+        self.c_notify.setChecked(True)
+        self.c_openwhen = QCheckBox("Open folder when finished")
+        fr.addWidget(self.c_notify)
+        fr.addWidget(self.c_openwhen)
+        lay.addLayout(fr)
+        return f
 
-        # ---- right: tabs ----
-        tabs = QTabWidget()
-        tabs.addTab(self.audio_tab(), "Audio / Voice")
-        tabs.addTab(self.video_tab(), "Format && Quality")
-        tabs.addTab(self.extras_tab(), "Intro / Outro")
-        outer.addWidget(tabs, 4)
-        self.setAcceptDrops(True)
-
-    # ---------- tabs ----------
-    def audio_tab(self):
+    def _right(self):
         w = QWidget()
-        f = QFormLayout(w)
-        self.c_noise = QCheckBox("Remove background noise")
+        h = QHBoxLayout(w)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(12)
+        self.nav = QListWidget()
+        self.nav.setObjectName("nav")
+        self.nav.setFixedWidth(176)
+        self.stack = QStackedWidget()
+        pages = [("Voice", self.page_voice()), ("Format & Quality", self.page_format()),
+                 ("Effects & Colour", self.page_effects()), ("Music", self.page_music()),
+                 ("Intro / Outro", self.page_intro()), ("Audio / Video tools", self.page_tools()),
+                 ("Appearance", self.page_appearance())]
+        for name, page in pages:
+            self.nav.addItem(name)
+            self.stack.addWidget(page)
+        self.nav.currentRowChanged.connect(self.stack.setCurrentIndex)
+        self.nav.setCurrentRow(0)
+        h.addWidget(self.nav)
+        h.addWidget(self.stack, 1)
+        return w
+
+    # ---------------- pages
+    def page_voice(self):
+        f, l = card("Voice enhancement", "Cleans and boosts the speech in your main video.")
+        self.c_noise = QCheckBox("Remove background noise (fan, hiss, room tone)")
         self.c_noise.setChecked(True)
-        self.s_noise = QSlider(Qt.Horizontal)
-        self.s_noise.setRange(5, 30)
-        self.s_noise.setValue(12)
-        self.l_noise = QLabel("12 dB")
-        self.s_noise.valueChanged.connect(lambda v: self.l_noise.setText(f"{v} dB"))
-        self.c_voice = QCheckBox("Boost voice (clarity + warmth EQ)")
+        sw, self.s_noise = slider(5, 30, 12, lambda v: f"{v} dB")
+        self.c_voice = QCheckBox("Boost voice - clarity, presence and warmth EQ")
         self.c_voice.setChecked(True)
         self.c_comp = QCheckBox("Even out volume (compressor)")
         self.c_comp.setChecked(True)
         self.c_norm = QCheckBox("Increase / normalize loudness")
         self.c_norm.setChecked(True)
-        self.s_lufs = QSlider(Qt.Horizontal)
-        self.s_lufs.setRange(-24, -9)
-        self.s_lufs.setValue(-14)
-        self.l_lufs = QLabel("-14 LUFS")
-        self.s_lufs.valueChanged.connect(lambda v: self.l_lufs.setText(f"{v} LUFS"))
+        lw, self.s_lufs = slider(-24, -9, -14, lambda v: f"{v} LUFS")
         self.s_gain = QSpinBox()
         self.s_gain.setRange(-20, 20)
         self.s_gain.setSuffix(" dB")
-        self.c_audio_only = QCheckBox("Fix audio only (keep video untouched – fastest)")
-        f.addRow(self.c_noise)
-        r = QHBoxLayout(); r.addWidget(self.s_noise); r.addWidget(self.l_noise)
-        f.addRow("Noise strength", r)
-        f.addRow(self.c_voice)
-        f.addRow(self.c_comp)
-        f.addRow(self.c_norm)
-        r = QHBoxLayout(); r.addWidget(self.s_lufs); r.addWidget(self.l_lufs)
-        f.addRow("Target loudness", r)
-        f.addRow("Extra gain", self.s_gain)
-        f.addRow(self.c_audio_only)
-        f.addRow(QLabel("<i>-14 LUFS = YouTube/Instagram standard. -16 is a bit quieter.<br>Louder = closer to -9.</i>"))
-        return w
+        for x in (self.c_noise, row("Noise strength", sw), self.c_voice, self.c_comp, self.c_norm,
+                  row("Target loudness", lw), row("Extra gain", self.s_gain)):
+            l.addWidget(x)
+        hint = QLabel("-14 LUFS is the YouTube / Instagram standard. Louder = closer to -9, quieter = -16.")
+        hint.setObjectName("muted")
+        hint.setWordWrap(True)
+        l.addWidget(hint)
+        f2, l2 = card("Audio only mode")
+        self.c_audio_only = QCheckBox("Fix audio only - keep the video untouched (very fast)")
+        l2.addWidget(self.c_audio_only)
+        n = QLabel("Ignores format, effects, intro/outro, speed and trim. Background music still works.")
+        n.setObjectName("muted")
+        n.setWordWrap(True)
+        l2.addWidget(n)
+        return make_page(f, f2)
 
-    def video_tab(self):
-        w = QWidget()
-        f = QFormLayout(w)
-        self.o_orient = QComboBox(); self.o_orient.addItems(ORIENTATIONS)
-        self.o_quality = QComboBox(); self.o_quality.addItems(QUALITIES); self.o_quality.setCurrentText("1080p (Full HD)")
-        self.o_fit = QComboBox(); self.o_fit.addItems(FIT_MODES)
+    def page_format(self):
+        f, l = card("Shape & size")
+        self.o_orient = combo(ORIENTATIONS)
+        self.o_quality = combo(QUALITIES, "1080p (Full HD)")
+        self.o_fit = combo(FIT_MODES)
         self.btn_col = QPushButton("Pick colour (black)")
         self.btn_col.clicked.connect(self.pick_color)
-        self.bg_img = FilePick("Images (*.png *.jpg *.jpeg *.webp)")
-        self.o_fps = QComboBox(); self.o_fps.addItems(["24", "25", "30", "50", "60"]); self.o_fps.setCurrentText("30")
-        self.o_comp = QComboBox(); self.o_comp.addItems(COMPRESSION); self.o_comp.setCurrentText("Balanced")
-        self.o_codec = QComboBox(); self.o_codec.addItems(CODECS)
-        f.addRow("Orientation", self.o_orient)
-        f.addRow("Resolution (HD conversion)", self.o_quality)
-        f.addRow("When aspect differs", self.o_fit)
-        f.addRow("Solid colour", self.btn_col)
-        f.addRow("Background image", self.bg_img)
-        f.addRow("Frame rate", self.o_fps)
-        f.addRow("Compression", self.o_comp)
-        f.addRow("Codec", self.o_codec)
-        return w
+        self.bg_img = FilePick(IMAGE_FILTER)
+        self.o_fps = combo(["24", "25", "30", "50", "60"], "30")
+        for lab, w in (("Orientation", self.o_orient), ("Resolution", self.o_quality), ("When shape differs", self.o_fit),
+                       ("Solid colour", self.btn_col), ("Background image", self.bg_img), ("Frame rate", self.o_fps)):
+            l.addWidget(row(lab, w))
+        f2, l2 = card("Compression", "Smaller files take less space; higher quality looks sharper.")
+        self.o_comp = combo(COMPRESSION, "Balanced")
+        self.o_codec = combo(CODECS)
+        l2.addWidget(row("Quality / size", self.o_comp))
+        l2.addWidget(row("Codec", self.o_codec))
+        return make_page(f, f2)
 
-    def extras_tab(self):
-        w = QWidget()
-        f = QFormLayout(w)
+    def page_effects(self):
+        f, l = card("Colour grading")
+        self.o_look = combo(COLOR_PRESETS)
+        l.addWidget(row("Look", self.o_look))
+        self.sl = {}
+        for key, lab, lo, hi in (("brightness", "Brightness", -50, 50), ("contrast", "Contrast", -50, 50),
+                                 ("saturation", "Saturation", -50, 50), ("gamma", "Gamma", -50, 50),
+                                 ("warmth", "Warmth (cool - warm)", -50, 50)):
+            w, s = slider(lo, hi, 0, lambda v: f"{v:+d}")
+            self.sl[key] = s
+            l.addWidget(row(lab, w))
+        reset = QPushButton("Reset colour")
+        reset.setObjectName("ghost")
+        reset.clicked.connect(lambda: [s.setValue(0) for s in self.sl.values()] + [self.o_look.setCurrentIndex(0)])
+        l.addWidget(reset, 0, Qt.AlignLeft)
+
+        f2, l2 = card("Finishing")
+        sw, self.s_sharp = slider(0, 100, 0, lambda v: f"{v}%")
+        l2.addWidget(row("Sharpen", sw))
+        self.c_vig = QCheckBox("Vignette (darker edges)")
+        self.c_vdn = QCheckBox("Reduce video grain / noise")
+        self.c_mirror = QCheckBox("Mirror (flip left-right)")
+        for c in (self.c_vig, self.c_vdn, self.c_mirror):
+            l2.addWidget(c)
+        self.fade_in = spin(0, 5, 0)
+        self.fade_out = spin(0, 5, 0)
+        l2.addWidget(row("Fade in", self.fade_in))
+        l2.addWidget(row("Fade out", self.fade_out))
+
+        f3, l3 = card("Speed & trim")
+        self.o_speed = combo(["0.5x", "0.75x", "1x", "1.25x", "1.5x", "2x"], "1x")
+        self.t_start = spin(0, 360000, 0, " s", 1)
+        self.t_end = spin(0, 360000, 0, " s (0 = end)", 1)
+        l3.addWidget(row("Speed", self.o_speed))
+        l3.addWidget(row("Start at", self.t_start))
+        l3.addWidget(row("End at", self.t_end))
+
+        f4, l4 = card("Logo / watermark")
+        self.wm = FilePick(IMAGE_FILTER)
+        self.wm_pos = combo(WM_POSITIONS, "Bottom right")
+        sw, self.wm_size = slider(5, 50, 15, lambda v: f"{v}%")
+        ow, self.wm_op = slider(10, 100, 80, lambda v: f"{v}%")
+        l4.addWidget(row("Image (PNG best)", self.wm))
+        l4.addWidget(row("Position", self.wm_pos))
+        l4.addWidget(row("Size", sw))
+        l4.addWidget(row("Opacity", ow))
+        return make_page(f, f2, f3, f4)
+
+    def page_music(self):
+        f, l = card("Background music", "Loops to fit your video and fades out at the end.")
+        self.music = FilePick(AUDIO_FILTER)
+        vw, self.m_vol = slider(0, 100, 20, lambda v: f"{v}%")
+        self.c_duck = QCheckBox("Lower the music automatically while someone is speaking")
+        self.c_duck.setChecked(True)
+        self.m_fade = spin(0, 10, 2)
+        l.addWidget(row("Music file", self.music))
+        l.addWidget(row("Music volume", vw))
+        l.addWidget(self.c_duck)
+        l.addWidget(row("Fade out", self.m_fade))
+        return make_page(f)
+
+    def page_intro(self):
+        f, l = card("Intro & outro", "Clips are resized to match your video and joined automatically.")
         self.intro = FilePick(VIDEO_FILTER)
         self.outro = FilePick(VIDEO_FILTER)
-        f.addRow("Intro video", self.intro)
-        f.addRow("Outro video", self.outro)
-        f.addRow(QLabel("<i>Intro/outro are resized to match, and joined automatically.<br>"
-                        "Voice enhancement is applied to your main video only.</i>"))
-        return w
+        l.addWidget(row("Intro video", self.intro))
+        l.addWidget(row("Outro video", self.outro))
+        n = QLabel("Voice enhancement and effects apply to the main video only. Preview skips intro/outro.")
+        n.setObjectName("muted")
+        n.setWordWrap(True)
+        l.addWidget(n)
+        return make_page(f)
 
-    # ---------- actions ----------
-    def pick_color(self):
-        c = QColorDialog.getColor()
+    def page_tools(self):
+        f, l = card("Separate audio & video", "These tools work on every video in the queue and are very fast.")
+        self.x_fmt = combo(AUDIO_FORMATS)
+        self.x_enh = QCheckBox("Apply voice enhancement to the extracted audio")
+        l.addWidget(row("Audio format", self.x_fmt))
+        l.addWidget(self.x_enh)
+        for text, kind in (("Extract audio", "extract"), ("Save video without audio", "mute"),
+                           ("Split into audio file + silent video", "split")):
+            b = QPushButton(text)
+            b.clicked.connect(lambda _=False, k=kind: self.run_tool(k))
+            l.addWidget(b)
+        f2, l2 = card("Add or replace audio", "Put a new soundtrack or voice-over on the queued videos (video is not re-encoded).")
+        self.a_file = FilePick(AUDIO_FILTER)
+        self.a_mode = combo(["Replace original audio", "Mix with original audio"])
+        vw, self.a_vol = slider(0, 200, 100, lambda v: f"{v}%")
+        self.a_loop = QCheckBox("Loop the audio if it is shorter than the video")
+        self.a_loop.setChecked(True)
+        l2.addWidget(row("Audio file", self.a_file))
+        l2.addWidget(row("Mode", self.a_mode))
+        l2.addWidget(row("Volume", vw))
+        l2.addWidget(self.a_loop)
+        b = QPushButton("Add audio to queued videos")
+        b.clicked.connect(lambda: self.run_tool("add"))
+        l2.addWidget(b)
+        return make_page(f, f2)
+
+    def page_appearance(self):
+        f, l = card("Theme", "Pick the look you like. Changes apply instantly and are remembered.")
+        self.o_theme = combo(THEMES, self.qs.value("theme", "Midnight"))
+        self.o_theme.currentIndexChanged.connect(lambda _: self.restyle(True))
+        l.addWidget(row("Colour theme", self.o_theme))
+        f2, l2 = card("Accent colours", "Used for buttons, sliders and highlights.")
+        sw = QHBoxLayout()
+        for name, col in ACCENT_PRESETS.items():
+            b = QPushButton()
+            b.setFixedSize(30, 30)
+            b.setToolTip(name)
+            b.setStyleSheet(f"background:{col}; border-radius:15px; border:2px solid transparent;")
+            b.clicked.connect(lambda _=False, c=col: self.set_accent(c))
+            sw.addWidget(b)
+        sw.addStretch(1)
+        wsw = QWidget()
+        wsw.setLayout(sw)
+        l2.addWidget(wsw)
+        r = QHBoxLayout()
+        b1 = QPushButton("Custom accent...")
+        b1.clicked.connect(lambda: self.custom_color("accent"))
+        b2 = QPushButton("Custom highlight...")
+        b2.clicked.connect(lambda: self.custom_color("accent2"))
+        b3 = QPushButton("Reset to theme")
+        b3.setObjectName("ghost")
+        b3.clicked.connect(self.reset_accent)
+        for b in (b1, b2, b3):
+            r.addWidget(b)
+        wr = QWidget()
+        wr.setLayout(r)
+        l2.addWidget(wr)
+        f3, l3 = card("Text size")
+        self.o_size = combo(["Compact", "Normal", "Large"], self.qs.value("size", "Normal"))
+        self.o_size.currentIndexChanged.connect(lambda _: self.restyle(True))
+        l3.addWidget(row("Interface size", self.o_size))
+        return make_page(f, f2, f3)
+
+    # ---------------- theme
+    def restyle(self, save=False):
+        pt = {"Compact": 9, "Normal": 10, "Large": 12}[self.o_size.currentText()]
+        apply_theme(self.app, self.o_theme.currentText(), self.qs.value("accent", ""), self.qs.value("accent2", ""), pt)
+        if save:
+            self.qs.setValue("theme", self.o_theme.currentText())
+            self.qs.setValue("size", self.o_size.currentText())
+
+    def set_accent(self, col):
+        self.qs.setValue("accent", col)
+        self.qs.setValue("accent2", "")
+        self.restyle()
+
+    def custom_color(self, key):
+        c = QColorDialog.getColor(QColor(self.qs.value(key, "#7C6CFF") or "#7C6CFF"), self)
         if c.isValid():
-            self.bg_color = c.name().replace("#", "0x")
-            self.btn_col.setText(f"Colour {c.name()}")
+            self.qs.setValue(key, c.name())
+            self.restyle()
+
+    def reset_accent(self):
+        self.qs.setValue("accent", "")
+        self.qs.setValue("accent2", "")
+        self.restyle()
+
+    # ---------------- presets & settings
+    def apply_preset(self):
+        p = PRESETS.get(self.preset.currentText())
+        if not p:
+            return
+        if "orient" in p:
+            self.o_orient.setCurrentText(p["orient"])
+        if "quality" in p:
+            self.o_quality.setCurrentText(p["quality"])
+        if "comp" in p:
+            self.o_comp.setCurrentText(p["comp"])
+        if "codec" in p:
+            self.o_codec.setCurrentText(p["codec"])
+        if "lufs" in p:
+            self.s_lufs.setValue(p["lufs"])
+        if "strength" in p:
+            self.s_noise.setValue(p["strength"])
+        self.c_audio_only.setChecked(bool(p.get("audio_only", False)))
+
+    def settings(self) -> Settings:
+        return Settings(
+            noise_removal=self.c_noise.isChecked(), noise_strength=self.s_noise.value(),
+            voice_boost=self.c_voice.isChecked(), compressor=self.c_comp.isChecked(),
+            normalize=self.c_norm.isChecked(), target_lufs=float(self.s_lufs.value()),
+            extra_gain_db=float(self.s_gain.value()), audio_only_enhance=self.c_audio_only.isChecked(),
+            orientation=self.o_orient.currentText(), quality=self.o_quality.currentText(),
+            fit_mode=self.o_fit.currentText(), bg_color=self.bg_color, bg_image=self.bg_img.value(),
+            fps=int(self.o_fps.currentText()), compression=self.o_comp.currentText(), codec=self.o_codec.currentText(),
+            color_preset=self.o_look.currentText(), brightness=self.sl["brightness"].value(),
+            contrast=self.sl["contrast"].value(), saturation=self.sl["saturation"].value(),
+            gamma=self.sl["gamma"].value(), warmth=self.sl["warmth"].value(), sharpen=self.s_sharp.value(),
+            vignette=self.c_vig.isChecked(), video_denoise=self.c_vdn.isChecked(), mirror=self.c_mirror.isChecked(),
+            fade_in=self.fade_in.value(), fade_out=self.fade_out.value(),
+            speed=float(self.o_speed.currentText().rstrip("x")), trim_start=self.t_start.value(),
+            trim_end=self.t_end.value(), watermark=self.wm.value(), wm_position=self.wm_pos.currentText(),
+            wm_size=self.wm_size.value(), wm_opacity=self.wm_op.value(), music=self.music.value(),
+            music_volume=self.m_vol.value(), music_duck=self.c_duck.isChecked(), music_fade_out=self.m_fade.value(),
+            intro=self.intro.value(), outro=self.outro.value())
+
+    def validate(self, s: Settings):
+        for label, path in (("Music", s.music), ("Logo", s.watermark), ("Background image", s.bg_image),
+                            ("Intro", s.intro), ("Outro", s.outro)):
+            if path and not os.path.isfile(path):
+                return f"{label} file not found:\n{path}"
+        if s.fit_mode == "Image background" and not s.bg_image:
+            return "Choose a background image, or pick another 'When shape differs' option."
+        if s.trim_end and s.trim_end <= s.trim_start:
+            return "'End at' must be later than 'Start at' (or 0 for the end)."
+        return None
+
+    # ---------------- queue
+    def files(self):
+        return [self.listw.item(i).data(Qt.UserRole) for i in range(self.listw.count())]
+
+    def add_paths(self, paths):
+        have = set(self.files())
+        for p in paths:
+            if os.path.isfile(p) and p not in have:
+                it = QListWidgetItem(os.path.basename(p))
+                it.setData(Qt.UserRole, p)
+                it.setToolTip(p)
+                self.listw.addItem(it)
 
     def add_files(self):
         files, _ = QFileDialog.getOpenFileNames(self, "Add videos", "", VIDEO_FILTER)
-        self.listw.addItems(files)
+        self.add_paths(files)
 
     def remove_sel(self):
         for it in self.listw.selectedItems():
@@ -213,49 +698,179 @@ class Main(QMainWindow):
             e.acceptProposedAction()
 
     def dropEvent(self, e):
-        self.listw.addItems([u.toLocalFile() for u in e.mimeData().urls() if os.path.isfile(u.toLocalFile())])
+        self.add_paths([u.toLocalFile() for u in e.mimeData().urls()])
 
-    def settings(self) -> Settings:
-        return Settings(
-            noise_removal=self.c_noise.isChecked(), noise_strength=self.s_noise.value(),
-            voice_boost=self.c_voice.isChecked(), compressor=self.c_comp.isChecked(),
-            normalize=self.c_norm.isChecked(), target_lufs=float(self.s_lufs.value()),
-            extra_gain_db=float(self.s_gain.value()), orientation=self.o_orient.currentText(),
-            quality=self.o_quality.currentText(), fit_mode=self.o_fit.currentText(), bg_color=self.bg_color,
-            bg_image=self.bg_img.value(), fps=int(self.o_fps.currentText()), compression=self.o_comp.currentText(),
-            codec=self.o_codec.currentText(), intro=self.intro.value(), outro=self.outro.value(),
-            audio_only_enhance=self.c_audio_only.isChecked())
+    def pick_outdir(self):
+        d = QFileDialog.getExistingDirectory(self, "Output folder")
+        if d:
+            self.outdir.setText(d)
 
-    def start(self):
-        files = [self.listw.item(i).text() for i in range(self.listw.count())]
-        if not files:
+    def pick_color(self):
+        c = QColorDialog.getColor(parent=self)
+        if c.isValid():
+            self.bg_color = c.name().replace("#", "0x")
+            self.btn_col.setText(f"Colour {c.name()}")
+
+    def out_path(self, src, suffix, ext="mp4"):
+        d = self.outdir.text().strip() or os.path.dirname(src)
+        os.makedirs(d, exist_ok=True)
+        self.last_out_dir = d
+        return os.path.join(d, f"{os.path.splitext(os.path.basename(src))[0]}{suffix}.{ext}")
+
+    def open_out(self):
+        d = self.last_out_dir or self.outdir.text().strip() or (os.path.dirname(self.files()[0]) if self.files() else "")
+        if d and os.path.isdir(d):
+            QDesktopServices.openUrl(QUrl.fromLocalFile(d))
+
+    # ---------------- running work
+    def need_files(self):
+        if not self.files():
             QMessageBox.information(self, "VoxCut", "Add at least one video first.")
-            return
-        s = self.settings()
-        if s.fit_mode == "Image background" and not s.bg_image:
-            QMessageBox.warning(self, "VoxCut", "Choose a background image or another fit mode.")
-            return
-        outdir = self.outdir.text().strip()
+            return False
+        return True
+
+    def begin(self, tasks, title, after=None):
+        self.results, self.after, self.total = [], after, len(tasks)
         self.log.clear()
+        self.log.append(title)
         self.bar.setValue(0)
-        self.go.setEnabled(False)
+        self.status.setText(f"{title}...")
+        for b in (self.go, self.btn_preview):
+            b.setEnabled(False)
         self.cancel.setEnabled(True)
-        self.total = len(files)
-        self.worker = Worker(files, outdir, s, "_enhanced")
-        self.worker.progress.connect(lambda i, p: self.bar.setValue(int((i + p / 100) / self.total * 100)))
-        self.worker.file_done.connect(lambda i, m: self.log.append(f"[{i+1}/{self.total}] {'✔ done' if m == 'OK' else '✖ ' + m}"))
-        self.worker.all_done.connect(self.finished)
+        self.qs.setValue("outdir", self.outdir.text().strip())
+        keep_awake(True)
+        self.worker = Worker(tasks)
+        self.worker.progress.connect(lambda i, p: (self.bar.setValue(int((i + p / 100) / self.total * 100)),
+                                                   self.status.setText(f"{title}: item {i + 1} of {self.total} - {int(p)}%")))
+        self.worker.item_done.connect(self.on_item)
+        self.worker.all_done.connect(self.on_all_done)
         self.worker.start()
 
-    def finished(self):
+    def on_item(self, i, msg, out):
+        name = self.worker.tasks[i][0]
+        ok = msg == "OK"
+        self.results.append((ok, out))
+        self.log.append(f"[{i + 1}/{self.total}] {'Done' if ok else 'FAILED'}: {name}" + ("" if ok else f"\n{msg}"))
+
+    def on_all_done(self):
+        keep_awake(False)
         self.go.setEnabled(True)
+        self.btn_preview.setEnabled(True)
         self.cancel.setEnabled(False)
-        self.log.append("Finished.")
+        ok = sum(1 for r in self.results if r[0])
+        bad = len(self.results) - ok
+        cancelled = self.worker.stop
+        msg = ("Cancelled." if cancelled else f"Finished: {ok} done" + (f", {bad} failed" if bad else ""))
+        self.bar.setValue(100 if ok and not bad and not cancelled else self.bar.value())
+        self.status.setText(msg)
+        self.log.append(msg)
+        if self.after and ok and not cancelled:
+            self.after([r[1] for r in self.results if r[0]])
+            return
+        if self.c_notify.isChecked() and not cancelled:
+            QApplication.alert(self, 0)
+            if self.tray:
+                self.tray.showMessage("VoxCut", msg, QSystemTrayIcon.Information, 6000)
+        if self.c_openwhen.isChecked() and ok and not cancelled:
+            self.open_out()
+
+    def _restore(self):
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def process(self):
+        if not self.need_files():
+            return
+        s = self.settings()
+        err = self.validate(s)
+        if err:
+            QMessageBox.warning(self, "VoxCut", err)
+            return
+        tasks = []
+        for f in self.files():
+            out = self.out_path(f, "_enhanced")
+            tasks.append((os.path.basename(f), lambda f=f, out=out: (*build_command(f, out, s), out)))
+        self.begin(tasks, "Processing")
+
+    def preview(self):
+        if not self.need_files():
+            return
+        s = self.settings()
+        err = self.validate(s)
+        if err:
+            QMessageBox.warning(self, "VoxCut", err)
+            return
+        sel = self.listw.selectedItems()
+        f = sel[0].data(Qt.UserRole) if sel else self.files()[0]
+        if self.pv_dialog is not None:      # release the previous preview file (Windows locks open files)
+            self.pv_dialog.close()
+            self.pv_dialog = None
+        self.pv_n += 1
+        out = os.path.join(tempfile.gettempdir(), f"voxcut_preview_{os.getpid()}_{self.pv_n}.mp4")
+        ps, pl = self.p_start.value(), self.p_len.value()
+        self.begin([(os.path.basename(f), lambda: (*build_command(f, out, s, preview=(ps, pl)), out))],
+                   "Rendering preview", after=self._show_preview)
+
+    def _show_preview(self, outs):
+        self.pv_dialog = PreviewDialog(outs[0], self)
+        self.pv_dialog.show()
+
+    def run_tool(self, kind):
+        if not self.need_files():
+            return
+        s = self.settings()
+        tasks = []
+        if kind == "add":
+            audio = self.a_file.value()
+            if not audio or not os.path.isfile(audio):
+                QMessageBox.information(self, "VoxCut", "Choose an audio file first.")
+                return
+        for f in self.files():
+            base = os.path.basename(f)
+            if kind in ("extract", "split"):
+                ext, _ = AUDIO_FORMATS[self.x_fmt.currentText()]
+                out = self.out_path(f, "_audio", ext)
+                tasks.append((f"{base} -> audio", lambda f=f, out=out: (*plan_extract_audio(
+                    f, out, self.x_fmt.currentText(), self.x_enh.isChecked(), s), out)))
+            if kind in ("mute", "split"):
+                out = self.out_path(f, "_video_only")
+                tasks.append((f"{base} -> video only", lambda f=f, out=out: (*plan_remove_audio(f, out), out)))
+            if kind == "add":
+                out = self.out_path(f, "_newaudio")
+                mode = "mix" if self.a_mode.currentIndex() == 1 else "replace"
+                tasks.append((f"{base} + audio", lambda f=f, out=out, mode=mode: (*plan_add_audio(
+                    f, audio, out, mode, self.a_vol.value(), self.a_loop.isChecked()), out)))
+        self.begin(tasks, "Working")
+
+    def closeEvent(self, e):
+        if self.worker and self.worker.isRunning():
+            self.worker.cancel()
+            self.worker.wait(3000)
+        keep_awake(False)
+        if self.pv_dialog is not None:
+            self.pv_dialog.close()
+        import glob
+        for p in glob.glob(os.path.join(tempfile.gettempdir(), f"voxcut_preview_{os.getpid()}_*.mp4")):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+        super().closeEvent(e)
 
 
 def main():
+    if os.name == "nt":
+        try:
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("VoxCut.Studio")
+        except Exception:  # noqa: BLE001
+            pass
     app = QApplication(sys.argv)
-    w = Main()
+    app.setApplicationName("VoxCut")
+    app.setWindowIcon(QIcon(asset_path("icon.png")))
+    w = Main(app)
+    w.add_paths(sys.argv[1:])
     w.show()
     sys.exit(app.exec())
 

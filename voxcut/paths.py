@@ -27,3 +27,11 @@ def find_tool(name):
 
 def no_window_flags():
     return subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+
+
+def asset_path(name):
+    """Path to a bundled asset (works from source and inside the PyInstaller exe)."""
+    base = getattr(sys, "_MEIPASS", None)
+    if base:
+        return os.path.join(base, "assets", name)
+    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", name)
