@@ -1,0 +1,77 @@
+"""Offline tests for voxcut.cloud using a local mock server (no network, no real account)."""
+import base64, json, os, sys, threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from voxcut.cloud import CloudClient, CloudError, NotSignedIn
+
+SEEN = []
+
+
+class H(BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def do_POST(self):
+        body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        auth = self.headers.get("Authorization", "")
+        SEEN.append((self.path, auth, body))
+        if auth != "Bearer good-token":
+            self.send_response(401); self.end_headers(); self.wfile.write(b"{}"); return
+        out = {"audio": base64.b64encode(b"ID3fake").decode()} if self.path.endswith("/tts") else {"ok": True}
+        self.send_response(200); self.send_header("Content-Type", "application/json"); self.end_headers()
+        self.wfile.write(json.dumps(out).encode())
+
+
+srv = HTTPServer(("127.0.0.1", 0), H)
+threading.Thread(target=srv.serve_forever, daemon=True).start()
+base = f"http://127.0.0.1:{srv.server_port}"
+
+
+class FakeSession:
+    access_token = "good-token"
+
+
+class FakeAuth:
+    def get_session(self):
+        return FakeSession()
+
+
+class FakeSB:
+    auth = FakeAuth()
+
+
+c = CloudClient(api_base=base)
+# 1) not signed in -> refused locally, nothing is sent
+try:
+    c.ideas("x"); raise SystemExit("expected NotSignedIn")
+except NotSignedIn:
+    pass
+assert not SEEN
+
+# 2) signed in (fake session) -> correct paths, bodies and bearer header
+c._sb, c.email = FakeSB(), "a@b.c"
+c.ideas("friendship", 5)
+c.compose("a reel about rain")
+c.trends("fitness", "tiktok")
+assert c.tts("hello", "alloy") == b"ID3fake"
+c.media("image", "sunset")
+assert [s[0] for s in SEEN] == ["/api/public/v1/ideas"] * 3 + ["/api/public/v1/tts", "/api/public/v1/media"]
+assert all(s[1] == "Bearer good-token" for s in SEEN)
+assert SEEN[0][2] == {"topic": "friendship", "count": 5, "kind": "quote"}
+assert SEEN[1][2] == {"action": "compose", "prompt": "a reel about rain"}
+assert SEEN[2][2] == {"action": "trends", "niche": "fitness", "platform": "tiktok"}
+assert SEEN[4][2] == {"kind": "image", "query": "sunset"}
+
+# 3) server rejects a bad token -> NotSignedIn
+FakeSession.access_token = "bad"
+try:
+    c.ideas("x"); raise SystemExit("expected NotSignedIn")
+except NotSignedIn:
+    pass
+
+# 4) bad media kind
+try:
+    c.media("gif", "x"); raise SystemExit("expected CloudError")
+except CloudError:
+    pass
+print("cloud tests OK")

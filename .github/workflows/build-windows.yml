@@ -38,6 +38,7 @@ jobs:
         run: |
           python tests/test_engine.py
           python tests/test_gui.py
+          python tests/test_cloud.py
         env:
           QT_QPA_PLATFORM: offscreen
           PYTHONUTF8: "1"
@@ -49,6 +50,7 @@ jobs:
             --icon assets\icon.ico --add-data "assets;assets" `
             --add-binary "bin\ffmpeg.exe;bin" --add-binary "bin\ffprobe.exe;bin" `
             --hidden-import PySide6.QtMultimedia --hidden-import PySide6.QtMultimediaWidgets `
+            --collect-all supabase `
             main.py
           Copy-Item dist\VoxCut.exe "dist\VoxCut-${{ github.ref_name }}.exe"
 

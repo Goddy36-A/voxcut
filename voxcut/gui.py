@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QColorDialog, QComboBox,
                                QSpinBox, QStackedWidget, QSystemTrayIcon, QTextEdit, QVBoxLayout, QWidget)
 
 from . import __version__
+from .cloud import CloudClient, CloudError
 from .engine import (AUDIO_FORMATS, CODECS, COLOR_PRESETS, COMPRESSION, FIT_MODES, ORIENTATIONS, QUALITIES,
                      WM_POSITIONS, Job, Settings, build_command, plan_add_audio, plan_extract_audio,
                      plan_remove_audio)
@@ -401,6 +402,7 @@ class Main(QMainWindow):
         pages = [("Voice", self.page_voice()), ("Format & Quality", self.page_format()),
                  ("Effects & Colour", self.page_effects()), ("Music", self.page_music()),
                  ("Intro / Outro", self.page_intro()), ("Audio / Video tools", self.page_tools()),
+                 ("AI Studio (online)", self.page_ai()),
                  ("Appearance", self.page_appearance())]
         for name, page in pages:
             self.nav.addItem(name)
@@ -560,6 +562,86 @@ class Main(QMainWindow):
         b.clicked.connect(lambda: self.run_tool("add"))
         l2.addWidget(b)
         return make_page(f, f2)
+
+    def page_ai(self):
+        """Online-only helpers (sign-in required). Rendering itself never leaves this PC."""
+        self.cloud = CloudClient()
+        f, l = card("Account", "Sign in with your QuoteTube web-app email and password. Needed for AI writing, "
+                    "narration and media search only - rendering stays offline. Your password is not saved.")
+        self.ai_email = QLineEdit(self.qs.value("ai_email", ""))
+        self.ai_email.setPlaceholderText("email")
+        self.ai_pass = QLineEdit()
+        self.ai_pass.setEchoMode(QLineEdit.Password)
+        self.ai_pass.setPlaceholderText("password")
+        self.ai_pass.returnPressed.connect(self.ai_sign_in)
+        self.ai_btn = QPushButton("Sign in")
+        self.ai_btn.clicked.connect(self.ai_sign_in)
+        self.ai_status = QLabel("Not signed in")
+        self.ai_status.setObjectName("muted")
+        l.addWidget(row("Email", self.ai_email))
+        l.addWidget(row("Password", self.ai_pass))
+        l.addWidget(self.ai_btn)
+        l.addWidget(self.ai_status)
+
+        f2, l2 = card("Ideas", "AI-written quotes for a topic.")
+        self.ai_topic = QLineEdit()
+        self.ai_topic.setPlaceholderText("e.g. friendship")
+        self.ai_count = QSpinBox()
+        self.ai_count.setRange(1, 20)
+        self.ai_count.setValue(5)
+        b = QPushButton("Get ideas")
+        b.clicked.connect(self.ai_ideas)
+        self.ai_out = QTextEdit()
+        self.ai_out.setMinimumHeight(160)
+        l2.addWidget(row("Topic", self.ai_topic))
+        l2.addWidget(row("How many", self.ai_count))
+        l2.addWidget(b)
+        l2.addWidget(self.ai_out)
+
+        f3, l3 = card("Narration", "Turn the text above into an MP3 voice-over, then add it with Audio / Video tools.")
+        self.ai_voice = combo(["alloy", "echo", "fable", "onyx", "nova", "shimmer"], "alloy")
+        b3 = QPushButton("Create narration MP3...")
+        b3.clicked.connect(self.ai_tts)
+        l3.addWidget(row("Voice", self.ai_voice))
+        l3.addWidget(b3)
+        return make_page(f, f2, f3)
+
+    def _ai_call(self, fn):
+        try:
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            return fn()
+        except CloudError as e:
+            QMessageBox.warning(self, "VoxCut online", str(e))
+        finally:
+            QApplication.restoreOverrideCursor()
+        return None
+
+    def ai_sign_in(self):
+        email = self.ai_email.text().strip()
+        if self._ai_call(lambda: self.cloud.sign_in(email, self.ai_pass.text())):
+            self.qs.setValue("ai_email", email)
+            self.ai_pass.clear()
+            self.ai_status.setText(f"Signed in as {email}")
+
+    def ai_ideas(self):
+        topic = self.ai_topic.text().strip()
+        if not topic:
+            return
+        res = self._ai_call(lambda: self.cloud.ideas(topic, int(self.ai_count.value())))
+        if res is not None:
+            import json
+            self.ai_out.setPlainText(json.dumps(res, indent=2, ensure_ascii=False))
+
+    def ai_tts(self):
+        text = self.ai_out.toPlainText().strip()
+        if not text:
+            return
+        mp3 = self._ai_call(lambda: self.cloud.tts(text, self.ai_voice.currentText()))
+        if mp3:
+            path, _ = QFileDialog.getSaveFileName(self, "Save narration", "narration.mp3", "MP3 (*.mp3)")
+            if path:
+                with open(path, "wb") as fh:
+                    fh.write(mp3)
 
     def page_appearance(self):
         f, l = card("Theme", "Pick the look you like. Changes apply instantly and are remembered.")
