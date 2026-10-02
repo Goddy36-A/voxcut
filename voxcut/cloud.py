@@ -110,14 +110,17 @@ class CloudClient:
 
     # ---------------- endpoints
     def ideas(self, topic, count=5, kind="quote"):
-        return self._post("/api/public/v1/ideas", {"topic": topic, "count": int(count), "kind": kind})
+        return self._post("/api/public/v1/ideas",
+                          {"action": "ideas", "topic": topic, "kind": kind, "count": int(count)})
 
     def compose(self, prompt):
         """Full reel plan."""
         return self._post("/api/public/v1/ideas", {"action": "compose", "prompt": prompt})
 
-    def trends(self, niche, platform):
-        return self._post("/api/public/v1/ideas", {"action": "trends", "niche": niche, "platform": platform})
+    def trends(self, niche, platform, count=5):
+        """Suggest formats. platform e.g. 'reels', 'tiktok', 'shorts'."""
+        return self._post("/api/public/v1/ideas",
+                          {"action": "trends", "niche": niche, "platform": platform, "count": int(count)})
 
     def tts(self, text, voice="alloy"):
         """Returns raw MP3 bytes (server sends base64)."""
@@ -127,7 +130,11 @@ class CloudClient:
             raise CloudError(f"No audio in response (keys: {sorted(res)}).")
         return base64.b64decode(b64)
 
-    def media(self, kind, query):
+    def media(self, kind, query, orientation=None, page=1):
+        """Search media. orientation e.g. 'horizontal' (optional); page starts at 1."""
         if kind not in MEDIA_KINDS:
             raise CloudError(f"kind must be one of {MEDIA_KINDS}")
-        return self._post("/api/public/v1/media", {"kind": kind, "query": query})
+        body = {"kind": kind, "query": query, "page": int(page)}
+        if orientation:
+            body["orientation"] = orientation
+        return self._post("/api/public/v1/media", body)

@@ -54,13 +54,13 @@ c.ideas("friendship", 5)
 c.compose("a reel about rain")
 c.trends("fitness", "tiktok")
 assert c.tts("hello", "alloy") == b"ID3fake"
-c.media("image", "sunset")
+c.media("image", "friends walking", orientation="horizontal", page=1)
 assert [s[0] for s in SEEN] == ["/api/public/v1/ideas"] * 3 + ["/api/public/v1/tts", "/api/public/v1/media"]
 assert all(s[1] == "Bearer good-token" for s in SEEN)
-assert SEEN[0][2] == {"topic": "friendship", "count": 5, "kind": "quote"}
+assert SEEN[0][2] == {"action": "ideas", "topic": "friendship", "kind": "quote", "count": 5}
 assert SEEN[1][2] == {"action": "compose", "prompt": "a reel about rain"}
-assert SEEN[2][2] == {"action": "trends", "niche": "fitness", "platform": "tiktok"}
-assert SEEN[4][2] == {"kind": "image", "query": "sunset"}
+assert SEEN[2][2] == {"action": "trends", "niche": "fitness", "platform": "tiktok", "count": 5}
+assert SEEN[4][2] == {"kind": "image", "query": "friends walking", "page": 1, "orientation": "horizontal"}
 
 # 3) server rejects a bad token -> NotSignedIn
 FakeSession.access_token = "bad"

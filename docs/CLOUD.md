@@ -5,9 +5,9 @@ Rendering is local (FFmpeg). Three things go online, all via the QuoteTube backe
 
 | Feature | Endpoint | Body |
 |---|---|---|
-| Ideas | `POST /api/public/v1/ideas` | `{"topic","count","kind":"quote"}`; add `"action":"compose"` + `prompt` for a full reel plan, or `"action":"trends"` + `niche` + `platform` |
+| Ideas | `POST /api/public/v1/ideas` | `{"action":"ideas","topic","kind":"quote","count"}`; `{"action":"compose","prompt"}` for a full reel plan; `{"action":"trends","niche","platform","count"}` to suggest formats |
 | Narration | `POST /api/public/v1/tts` | `{"text","voice":"alloy"}` -> MP3 as base64 |
-| Media search | `POST /api/public/v1/media` | `{"kind":"image"\|"video"\|"music","query"}` |
+| Media search | `POST /api/public/v1/media` | `{"kind":"image"\|"video"\|"music","query","orientation":"horizontal","page":1}` |
 
 ## Auth
 * Official `supabase` Python package signs in with the user's **own** web-app email + password.
@@ -31,3 +31,5 @@ Rendering is local (FFmpeg). Three things go online, all via the QuoteTube backe
 * Response shapes for ideas/media are shown as raw JSON for now.
 * The live address only works once the web app is **published**.
 * PyInstaller bundling of `supabase` (`--collect-all supabase`) is untested until the first CI build.
+
+* Status checks: an unsigned POST returns `401` JSON when the API is published; `404` HTML means the web app was not republished.
