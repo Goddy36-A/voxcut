@@ -3,7 +3,10 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import os
 import subprocess
+import tempfile
+import uuid
 from dataclasses import dataclass
 from typing import Callable, Optional
 
@@ -96,6 +99,13 @@ class Settings:
     # ---- intro / outro
     intro: Optional[str] = None
     outro: Optional[str] = None
+    # ---- AI background replacement
+    mat_mode: str = "Off"             # Off | Image | Video | Blur my room | Solid colour
+    mat_path: Optional[str] = None    # background image / video
+    mat_color: str = "#00B140"
+    mat_edge: int = 20                # 0..100 edge sharpness
+    mat_light: bool = True            # match person brightness to the new scene
+    mat_quality: str = "Fast (720p)"
 
 
 # --------------------------------------------------------------------------- probing
@@ -377,6 +387,75 @@ def plan_add_audio(src: str, audio: str, out: str, mode: str = "replace", volume
     cmd = ([find_tool("ffmpeg")] + HEAD + inputs + ["-filter_complex", fc, "-map", "0:v:0", "-map", "[a]",
            "-c:v", "copy", "-c:a", "aac", "-b:a", "192k"] + (["-t", f"{dur:.3f}"] if loop else []) + [out])
     return cmd, dur
+
+
+# --------------------------------------------------------------------------- background replacement chain
+class Chain:
+    """Runs several steps one after another, mapping their progress into one 0..100 bar."""
+
+    def __init__(self, steps, cleanup: Callable[[], None] = lambda: None):
+        self.steps, self.cleanup, self.cur, self.cancelled = steps, cleanup, None, False
+
+    def run(self, on_progress: Callable[[float], None] = lambda p: None) -> None:
+        total = sum(w for _, w in self.steps)
+        done = 0.0
+        try:
+            for factory, w in self.steps:
+                if self.cancelled:
+                    raise RuntimeError("Cancelled")
+                self.cur = factory()
+                self.cur.run(lambda p, base=done, w=w: on_progress((base + p / 100 * w) / total * 100))
+                done += w
+            on_progress(100.0)
+        finally:
+            self.cleanup()
+
+    def cancel(self):
+        self.cancelled = True
+        if self.cur:
+            self.cur.cancel()
+
+
+def plan_enhance(main: str, out: str, s: Settings, preview: Optional[tuple[float, float]] = None):
+    """Returns (runner, out). Plain ffmpeg job normally; with AI background replacement it is a 2-step chain:
+    1) cut the person out and place them on the new background, 2) the normal enhance pipeline."""
+    if s.mat_mode == "Off":
+        cmd, dur = build_command(main, out, s, preview)
+        return Job(cmd, dur), out
+    from .matting import MAT_QUALITY, MattingJob, available, work_size
+    ok, why = available()
+    if not ok:
+        raise RuntimeError(why)
+    minfo = media_info(main)
+    if not minfo["has_video"]:
+        raise RuntimeError("Input has no video stream.")
+    dur_in = minfo["duration"]
+    start = max(0.0, s.trim_start)
+    end = s.trim_end if s.trim_end > 0 else dur_in
+    end = min(end, dur_in) if dur_in else end
+    if preview:
+        start += preview[0]
+        end = min(end, start + preview[1])
+    if end - start < 0.1:
+        raise RuntimeError("The trim / preview range is empty. Check Start and End times.")
+    size = work_size(minfo["w"], minfo["h"], MAT_QUALITY[s.mat_quality])
+    tmp = os.path.join(tempfile.gettempdir(), f"voxcut_bg_{uuid.uuid4().hex[:8]}.mp4")
+    s2 = dataclasses.replace(s, mat_mode="Off", trim_start=0.0, trim_end=0.0)
+
+    def step1():
+        return MattingJob(main, tmp, s.mat_mode, s.mat_path, s.mat_color, s.mat_edge, s.mat_light,
+                          size, s.fps, start, end - start)
+
+    def step2():
+        cmd, dur = build_command(tmp, out, s2, (0.0, 1e9) if preview else None)
+        return Job(cmd, dur)
+
+    def cleanup():
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+    return Chain([(step1, 85), (step2, 15)], cleanup), out
 
 
 # --------------------------------------------------------------------------- runner

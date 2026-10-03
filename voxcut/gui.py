@@ -12,8 +12,9 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QColorDialog, QComboBox,
 
 from . import __version__
 from .engine import (AUDIO_FORMATS, CODECS, COLOR_PRESETS, COMPRESSION, FIT_MODES, ORIENTATIONS, QUALITIES,
-                     WM_POSITIONS, Job, Settings, build_command, plan_add_audio, plan_extract_audio,
+                     WM_POSITIONS, Job, Settings, plan_add_audio, plan_enhance, plan_extract_audio,
                      plan_remove_audio)
+from .matting import MAT_MODES, MAT_QUALITY, available as matting_available
 from .paths import asset_path
 from .theme import ACCENT_PRESETS, THEMES, apply_theme
 
@@ -166,8 +167,11 @@ class Worker(QThread):
             if self.stop:
                 break
             try:
-                cmd, dur, out = thunk()
-                self.job = Job(cmd, dur)
+                res = thunk()
+                if len(res) == 3:                      # (ffmpeg argv, duration, output)
+                    self.job, out = Job(res[0], res[1]), res[2]
+                else:                                  # (runner, output) - e.g. background replacement chain
+                    self.job, out = res
                 self.job.run(lambda p, i=i: self.progress.emit(i, p))
                 self.item_done.emit(i, "OK", out)
             except Exception as e:  # noqa: BLE001
@@ -398,7 +402,8 @@ class Main(QMainWindow):
         self.nav.setObjectName("nav")
         self.nav.setFixedWidth(176)
         self.stack = QStackedWidget()
-        pages = [("Voice", self.page_voice()), ("Format & Quality", self.page_format()),
+        pages = [("Voice", self.page_voice()), ("Background", self.page_background()),
+                 ("Format & Quality", self.page_format()),
                  ("Effects & Colour", self.page_effects()), ("Music", self.page_music()),
                  ("Intro / Outro", self.page_intro()), ("Audio / Video tools", self.page_tools()),
                  ("Appearance", self.page_appearance())]
@@ -442,6 +447,51 @@ class Main(QMainWindow):
         n.setWordWrap(True)
         l2.addWidget(n)
         return make_page(f, f2)
+
+    def page_background(self):
+        f, l = card("Replace your background",
+                    "AI cuts you out of the video and puts you in any scene - for example your university compound. "
+                    "Works fully offline.")
+        self.m_mode = combo(MAT_MODES)
+        self.m_path = FilePick("Images and videos (*.png *.jpg *.jpeg *.webp *.bmp *.mp4 *.mov *.mkv *.webm);;All files (*)")
+        self.m_color = "#00B140"
+        self.m_btn = QPushButton("Pick colour (#00B140)")
+        self.m_btn.clicked.connect(self.pick_mat_color)
+        ew, self.m_edge = slider(0, 100, 20, lambda v: f"{v}%")
+        self.m_light = QCheckBox("Match my brightness to the new scene (more natural)")
+        self.m_light.setChecked(True)
+        self.m_quality = combo(MAT_QUALITY)
+        self.m_rows = {"path": row("Background file", self.m_path), "color": row("Colour", self.m_btn)}
+        l.addWidget(row("Background", self.m_mode))
+        l.addWidget(self.m_rows["path"])
+        l.addWidget(self.m_rows["color"])
+        l.addWidget(row("Edge sharpness", ew, "Higher = crisper outline around you. Lower = softer, more natural hair."))
+        l.addWidget(self.m_light)
+        l.addWidget(row("Speed / quality", self.m_quality))
+        self.m_mode.currentIndexChanged.connect(self._mat_mode_changed)
+        self._mat_mode_changed()
+        f2, l2 = card("Tips for a clean result")
+        t = QLabel("- Use Preview first: it renders only a few seconds so you can check the edges.\n"
+                   "- Good, even light on your face and a background different from your clothes works best.\n"
+                   "- Keep the camera still. Sit a little away from the wall.\n"
+                   "- Use a photo of the same orientation (landscape photo for landscape video).\n"
+                   "- This is the slowest feature: roughly 1-3x the video length on a typical laptop, faster on PCs "
+                   "with more CPU cores.")
+        t.setObjectName("muted")
+        t.setWordWrap(True)
+        l2.addWidget(t)
+        return make_page(f, f2)
+
+    def _mat_mode_changed(self):
+        mode = self.m_mode.currentText()
+        self.m_rows["path"].setVisible(mode in ("Image", "Video"))
+        self.m_rows["color"].setVisible(mode == "Solid colour")
+
+    def pick_mat_color(self):
+        c = QColorDialog.getColor(QColor(self.m_color), self)
+        if c.isValid():
+            self.m_color = c.name().upper()
+            self.m_btn.setText(f"Pick colour ({self.m_color})")
 
     def page_format(self):
         f, l = card("Shape & size")
@@ -659,13 +709,23 @@ class Main(QMainWindow):
             trim_end=self.t_end.value(), watermark=self.wm.value(), wm_position=self.wm_pos.currentText(),
             wm_size=self.wm_size.value(), wm_opacity=self.wm_op.value(), music=self.music.value(),
             music_volume=self.m_vol.value(), music_duck=self.c_duck.isChecked(), music_fade_out=self.m_fade.value(),
-            intro=self.intro.value(), outro=self.outro.value())
+            intro=self.intro.value(), outro=self.outro.value(), mat_mode=self.m_mode.currentText(),
+            mat_path=self.m_path.value(), mat_color=self.m_color, mat_edge=self.m_edge.value(),
+            mat_light=self.m_light.isChecked(), mat_quality=self.m_quality.currentText())
 
     def validate(self, s: Settings):
         for label, path in (("Music", s.music), ("Logo", s.watermark), ("Background image", s.bg_image),
                             ("Intro", s.intro), ("Outro", s.outro)):
             if path and not os.path.isfile(path):
                 return f"{label} file not found:\n{path}"
+        if s.mat_mode != "Off":
+            if s.audio_only_enhance:
+                return "Turn off 'Audio only mode' (Voice tab) to replace the background."
+            ok, why = matting_available()
+            if not ok:
+                return why
+            if s.mat_mode in ("Image", "Video") and not (s.mat_path and os.path.isfile(s.mat_path)):
+                return "Choose a background image or video file on the Background tab."
         if s.fit_mode == "Image background" and not s.bg_image:
             return "Choose a background image, or pick another 'When shape differs' option."
         if s.trim_end and s.trim_end <= s.trim_start:
@@ -791,7 +851,7 @@ class Main(QMainWindow):
         tasks = []
         for f in self.files():
             out = self.out_path(f, "_enhanced")
-            tasks.append((os.path.basename(f), lambda f=f, out=out: (*build_command(f, out, s), out)))
+            tasks.append((os.path.basename(f), lambda f=f, out=out: plan_enhance(f, out, s)))
         self.begin(tasks, "Processing")
 
     def preview(self):
@@ -810,7 +870,7 @@ class Main(QMainWindow):
         self.pv_n += 1
         out = os.path.join(tempfile.gettempdir(), f"voxcut_preview_{os.getpid()}_{self.pv_n}.mp4")
         ps, pl = self.p_start.value(), self.p_len.value()
-        self.begin([(os.path.basename(f), lambda: (*build_command(f, out, s, preview=(ps, pl)), out))],
+        self.begin([(os.path.basename(f), lambda: plan_enhance(f, out, s, preview=(ps, pl)))],
                    "Rendering preview", after=self._show_preview)
 
     def _show_preview(self, outs):

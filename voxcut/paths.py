@@ -35,3 +35,11 @@ def asset_path(name):
     if base:
         return os.path.join(base, "assets", name)
     return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", name)
+
+
+def model_path(name="rvm_mobilenetv3_fp32.onnx"):
+    """Path to a bundled AI model (works from source and inside the PyInstaller exe)."""
+    base = getattr(sys, "_MEIPASS", None)
+    if base:
+        return os.path.join(base, "models", name)
+    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models", name)
