@@ -27,19 +27,6 @@ threading.Thread(target=srv.serve_forever, daemon=True).start()
 base = f"http://127.0.0.1:{srv.server_port}"
 
 
-class FakeSession:
-    access_token = "good-token"
-
-
-class FakeAuth:
-    def get_session(self):
-        return FakeSession()
-
-
-class FakeSB:
-    auth = FakeAuth()
-
-
 c = CloudClient(api_base=base)
 # 1) not signed in -> refused locally, nothing is sent
 try:
@@ -48,8 +35,8 @@ except NotSignedIn:
     pass
 assert not SEEN
 
-# 2) signed in (fake session) -> correct paths, bodies and bearer header
-c._sb, c.email = FakeSB(), "a@b.c"
+# 2) key set -> correct paths, bodies and bearer header
+c.set_key("good-token")
 c.ideas("friendship", 5)
 c.compose("a reel about rain")
 c.trends("fitness", "tiktok")
@@ -63,7 +50,7 @@ assert SEEN[2][2] == {"action": "trends", "niche": "fitness", "platform": "tikto
 assert SEEN[4][2] == {"kind": "image", "query": "friends walking", "page": 1, "orientation": "horizontal"}
 
 # 3) server rejects a bad token -> NotSignedIn
-FakeSession.access_token = "bad"
+c.set_key("bad")
 try:
     c.ideas("x"); raise SystemExit("expected NotSignedIn")
 except NotSignedIn:

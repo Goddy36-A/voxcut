@@ -1,7 +1,7 @@
 # Cloud features (AI Studio) - contributor guide
 
 Rendering is local (FFmpeg). Three things go online, all via the QuoteTube backend
-(`https://quotetube.lovable.app`), and **all require a signed-in user**:
+(`https://quotetube.lovable.app`), and **all require a valid API key**:
 
 | Feature | Endpoint | Body |
 |---|---|---|
@@ -10,18 +10,16 @@ Rendering is local (FFmpeg). Three things go online, all via the QuoteTube backe
 | Media search | `POST /api/public/v1/media` | `{"kind":"image"\|"video"\|"music","query","orientation":"horizontal","page":1}` |
 
 ## Auth
-* Official `supabase` Python package signs in with the user's **own** web-app email + password.
-* Supabase URL: `https://igzaioacedmpvqbromkk.supabase.co`; the key is the *publishable* (public) key, safe to ship.
-  Never put a `service_role` / secret key in this repo.
-* Each request sends `Authorization: Bearer <access_token>`; `get_session()` refreshes it automatically.
-* Password is never stored; only the email is remembered (QSettings). Session is in memory only.
-* Unauthenticated requests are rejected server-side (verified by the backend owner) -> surfaced as `NotSignedIn`.
+* The user pastes an **API key** (from the QuoteTube web app) into the AI Studio tab. It is sent on every request as
+  `Authorization: Bearer <key>`. No email/password and no Supabase library are used any more.
+* The key is held in memory; it is saved to QSettings (plain text in the Windows registry) **only** if the user ticks
+  "Remember on this PC". Never commit a key to this repo, and never log it.
+* Unauthenticated or bad-key requests are rejected server-side -> surfaced as `NotSignedIn` ("API key rejected").
 * Admin settings are intentionally **not** exposed here (deferred).
 
 ## Code map
-* `voxcut/cloud.py` - `CloudClient` (no Qt): `sign_in`, `ideas`, `compose`, `trends`, `tts`, `media`. Env overrides:
-  `VOXCUT_SUPABASE_URL`, `VOXCUT_SUPABASE_KEY`, `VOXCUT_API_BASE` (handy for staging).
-* `voxcut/gui.py` - `page_ai()` tab "AI Studio (online)": sign-in, ideas, narration. `compose`, `trends` and `media`
+* `voxcut/cloud.py` - `CloudClient(api_key)` (no Qt): `set_key`, `ideas`, `compose`, `trends`, `tts`, `media`. Env override: `VOXCUT_API_BASE` (handy for staging).
+* `voxcut/gui.py` - `page_ai()` tab "AI Studio (online)": API key, ideas, narration. `compose`, `trends` and `media`
   are implemented in the client but **not yet in the UI** - good first contributions.
 * `tests/test_cloud.py` - offline tests against a local mock server.
 
@@ -30,6 +28,5 @@ Rendering is local (FFmpeg). Three things go online, all via the QuoteTube backe
   Confirm against the live API and tighten.
 * Response shapes for ideas/media are shown as raw JSON for now.
 * The live address only works once the web app is **published**.
-* PyInstaller bundling of `supabase` (`--collect-all supabase`) is untested until the first CI build.
 
 * Status checks: an unsigned POST returns `401` JSON when the API is published; `404` HTML means the web app was not republished.

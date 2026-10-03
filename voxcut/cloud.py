@@ -5,9 +5,8 @@ Video rendering stays 100% local (FFmpeg). Only these three things go online:
   * tts    - AI narration (MP3)
   * media  - image / video / music search
 
-Every request needs a signed-in user. Sign in with the same email + password as the
-QuoteTube web app; the access token is sent as ``Authorization: Bearer <token>``.
-The password is never stored - the session lives in memory only.
+Every request needs a valid API key from the QuoteTube web app, sent as
+``Authorization: Bearer <key>``. Treat the key like a password.
 
 No Qt imports here so it can be tested and reused from scripts.
 """
@@ -17,9 +16,7 @@ import os
 import urllib.error
 import urllib.request
 
-# Public (publishable) values - safe to ship in the client. Override via env for staging.
-SUPABASE_URL = os.environ.get("VOXCUT_SUPABASE_URL", "https://igzaioacedmpvqbromkk.supabase.co")
-SUPABASE_PUBLIC_KEY = os.environ.get("VOXCUT_SUPABASE_KEY", "sb_publishable_0ZYwjRAmpgTAbP7ZQfVO3g_0Wqs3r46")
+# Override via env for staging.
 API_BASE = os.environ.get("VOXCUT_API_BASE", "https://quotetube.lovable.app").rstrip("/")
 
 MEDIA_KINDS = ("image", "video", "music")
@@ -36,56 +33,28 @@ class NotSignedIn(CloudError):
 
 
 class CloudClient:
-    def __init__(self, supabase_url=SUPABASE_URL, public_key=SUPABASE_PUBLIC_KEY, api_base=API_BASE):
-        self.supabase_url, self.public_key, self.api_base = supabase_url, public_key, api_base.rstrip("/")
-        self._sb = None
-        self.email = None
+    """Authenticates with a QuoteTube API key sent as ``Authorization: Bearer <key>``."""
+
+    def __init__(self, api_key="", api_base=API_BASE):
+        self.api_base = api_base.rstrip("/")
+        self.api_key = (api_key or "").strip()
 
     # ---------------- auth
-    def _client(self):
-        if self._sb is None:
-            try:
-                from supabase import create_client  # official sign-in library
-            except ImportError as e:  # pragma: no cover
-                raise CloudError("The 'supabase' package is not installed (pip install supabase).") from e
-            self._sb = create_client(self.supabase_url, self.public_key)
-        return self._sb
-
     @property
-    def signed_in(self):
-        return self.email is not None
+    def signed_in(self):  # kept for GUI wording; True when a key is set
+        return bool(self.api_key)
 
-    def sign_in(self, email, password):
-        try:
-            res = self._client().auth.sign_in_with_password({"email": email.strip(), "password": password})
-        except CloudError:
-            raise
-        except Exception as e:  # noqa: BLE001
-            raise CloudError(f"Sign-in failed: {e}") from e
-        if not getattr(res, "session", None):
-            raise CloudError("Sign-in failed: no session returned.")
-        self.email = email.strip()
-        return self.email
+    def set_key(self, key):
+        self.api_key = (key or "").strip()
+        return self.api_key
 
-    def sign_out(self):
-        try:
-            if self._sb is not None:
-                self._sb.auth.sign_out()
-        except Exception:  # noqa: BLE001
-            pass
-        self._sb, self.email = None, None
+    def clear_key(self):
+        self.api_key = ""
 
     def access_token(self):
-        """Current access token; the library refreshes it automatically when it expires."""
-        if not self.signed_in:
-            raise NotSignedIn("Please sign in first.")
-        try:
-            session = self._client().auth.get_session()
-        except Exception as e:  # noqa: BLE001
-            raise NotSignedIn(f"Session expired, please sign in again ({e}).") from e
-        if not session or not session.access_token:
-            raise NotSignedIn("Session expired, please sign in again.")
-        return session.access_token
+        if not self.api_key:
+            raise NotSignedIn("Please paste your API key first.")
+        return self.api_key
 
     # ---------------- HTTP
     def _post(self, path, payload):
@@ -101,7 +70,7 @@ class CloudClient:
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8", "replace")[:300]
             if e.code in (401, 403):
-                raise NotSignedIn("Not authorised - please sign in again.") from e
+                raise NotSignedIn("The server rejected the API key (missing, wrong or revoked).") from e
             raise CloudError(f"Server error {e.code}: {body}") from e
         except urllib.error.URLError as e:
             raise CloudError(f"Cannot reach the server: {e.reason}") from e

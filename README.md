@@ -3,7 +3,7 @@
 <img src="assets/icon.png" width="96" align="right">
 
 Video & voice studio for Windows. One `.exe`, no installs. Rendering is 100% offline and local
-(FFmpeg bundled + PySide6); the optional **AI Studio** tab uses the internet (sign-in required).
+(FFmpeg bundled + PySide6); the optional **AI Studio** tab uses the internet (API key required).
 
 ## Features
 - **Voice**: noise removal, voice-clarity EQ, volume compressor, loudness boost / normalize (LUFS), extra gain
@@ -20,7 +20,7 @@ Video & voice studio for Windows. One `.exe`, no installs. Rendering is 100% off
 - **Batch** processing, drag & drop, cancel, tray notification when finished, prevents PC sleep during renders
 - **Themes**: Midnight, Graphite, Ocean, Sunset, Forest, Light + custom accent colours and text size
 
-- **AI Studio (online, optional)**: sign in with your QuoteTube account for AI quote ideas and narration (MP3). See [docs/CLOUD.md](docs/CLOUD.md)
+- **AI Studio (online, optional)**: paste your QuoteTube API key for AI quote ideas and narration (MP3). See [docs/CLOUD.md](docs/CLOUD.md)
 
 ## Get the EXE
 Download `VoxCut-vX.Y.Z.exe` from **Releases**. Or push to `main` and download the **VoxCut-windows**

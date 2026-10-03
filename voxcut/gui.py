@@ -566,22 +566,25 @@ class Main(QMainWindow):
     def page_ai(self):
         """Online-only helpers (sign-in required). Rendering itself never leaves this PC."""
         self.cloud = CloudClient()
-        f, l = card("Account", "Sign in with your QuoteTube web-app email and password. Needed for AI writing, "
-                    "narration and media search only - rendering stays offline. Your password is not saved.")
-        self.ai_email = QLineEdit(self.qs.value("ai_email", ""))
-        self.ai_email.setPlaceholderText("email")
-        self.ai_pass = QLineEdit()
-        self.ai_pass.setEchoMode(QLineEdit.Password)
-        self.ai_pass.setPlaceholderText("password")
-        self.ai_pass.returnPressed.connect(self.ai_sign_in)
-        self.ai_btn = QPushButton("Sign in")
-        self.ai_btn.clicked.connect(self.ai_sign_in)
-        self.ai_status = QLabel("Not signed in")
+        f, l = card("API key", "Paste the API key from your QuoteTube web app. Needed for AI writing and "
+                    "narration only - rendering stays offline. Treat it like a password.")
+        self.ai_key = QLineEdit(self.qs.value("ai_key", ""))
+        self.ai_key.setEchoMode(QLineEdit.Password)
+        self.ai_key.setPlaceholderText("paste API key")
+        self.ai_remember = QCheckBox("Remember on this PC")
+        self.ai_remember.setChecked(bool(self.qs.value("ai_key", "")))
+        self.ai_key.returnPressed.connect(self.ai_save_key)
+        self.ai_btn = QPushButton("Use key")
+        self.ai_btn.clicked.connect(self.ai_save_key)
+        self.ai_status = QLabel("No key set")
         self.ai_status.setObjectName("muted")
-        l.addWidget(row("Email", self.ai_email))
-        l.addWidget(row("Password", self.ai_pass))
+        l.addWidget(row("API key", self.ai_key))
+        l.addWidget(self.ai_remember)
         l.addWidget(self.ai_btn)
         l.addWidget(self.ai_status)
+        if self.ai_key.text().strip():
+            self.cloud.set_key(self.ai_key.text())
+            self.ai_status.setText("Key loaded")
 
         f2, l2 = card("Ideas", "AI-written quotes for a topic.")
         self.ai_topic = QLineEdit()
@@ -616,12 +619,13 @@ class Main(QMainWindow):
             QApplication.restoreOverrideCursor()
         return None
 
-    def ai_sign_in(self):
-        email = self.ai_email.text().strip()
-        if self._ai_call(lambda: self.cloud.sign_in(email, self.ai_pass.text())):
-            self.qs.setValue("ai_email", email)
-            self.ai_pass.clear()
-            self.ai_status.setText(f"Signed in as {email}")
+    def ai_save_key(self):
+        key = self.cloud.set_key(self.ai_key.text())
+        if key and self.ai_remember.isChecked():
+            self.qs.setValue("ai_key", key)
+        else:
+            self.qs.remove("ai_key")
+        self.ai_status.setText("Key set (checked on first use)" if key else "No key set")
 
     def ai_ideas(self):
         topic = self.ai_topic.text().strip()
