@@ -22,6 +22,23 @@ API_BASE = os.environ.get("VOXCUT_API_BASE", "https://quotetube.lovable.app").rs
 MEDIA_KINDS = ("image", "video", "music")
 IDEA_KINDS = ("quote",)  # extend as the server adds more
 TIMEOUT = 60
+try:
+    from . import __version__ as _v
+except Exception:  # noqa: BLE001
+    _v = "0"
+USER_AGENT = f"VoxCut/{_v} (Windows desktop app)"
+
+
+def _server_message(raw: str) -> str:
+    """Short, safe text from a JSON error body ({"error": "..."}); never echoes HTML pages."""
+    try:
+        d = json.loads(raw)
+        m = d.get("error") or d.get("message") or ""
+        if isinstance(m, dict):
+            m = m.get("message", "")
+        return f": {str(m)[:160]}" if m else ""
+    except Exception:  # noqa: BLE001
+        return ""
 
 
 class CloudError(Exception):
@@ -45,7 +62,10 @@ class CloudClient:
         return bool(self.api_key)
 
     def set_key(self, key):
-        self.api_key = (key or "").strip()
+        k = (key or "").strip().strip("\"'").strip()
+        if k.lower().startswith("bearer "):  # people sometimes paste the whole header value
+            k = k[7:].strip()
+        self.api_key = k
         return self.api_key
 
     def clear_key(self):
@@ -62,16 +82,22 @@ class CloudClient:
             f"{self.api_base}{path}",
             data=json.dumps(payload).encode("utf-8"),
             method="POST",
-            headers={"Content-Type": "application/json", "Authorization": f"Bearer {self.access_token()}"},
+            headers={"Content-Type": "application/json", "Accept": "application/json",
+                     "User-Agent": USER_AGENT, "Authorization": f"Bearer {self.access_token()}"},
         )
         try:
             with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
                 return json.loads(r.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
-            body = e.read().decode("utf-8", "replace")[:300]
-            if e.code in (401, 403):
-                raise NotSignedIn("The server rejected the API key (missing, wrong or revoked).") from e
-            raise CloudError(f"Server error {e.code}: {body}") from e
+            raw = e.read().decode("utf-8", "replace")
+            msg = _server_message(raw)
+            if e.code == 401:
+                raise NotSignedIn(f"The server rejected the API key (401){msg} - check it is current, "
+                                  "complete and not revoked.") from e
+            if e.code == 403:
+                raise CloudError(f"Access denied (403){msg}. If your key is valid, the server or its firewall "
+                                 "blocked this request.") from e
+            raise CloudError(f"Server error {e.code}{msg}") from e
         except urllib.error.URLError as e:
             raise CloudError(f"Cannot reach the server: {e.reason}") from e
         except json.JSONDecodeError as e:
@@ -120,7 +146,7 @@ class CloudClient:
         """
         import urllib.parse
         full = urllib.parse.urljoin(self.api_base + "/", url)
-        headers = {"User-Agent": "VoxCut"}
+        headers = {"User-Agent": USER_AGENT}
         if urllib.parse.urlparse(full).netloc == urllib.parse.urlparse(self.api_base).netloc:
             headers["Authorization"] = f"Bearer {self.access_token()}"
         req = urllib.request.Request(full, headers=headers)

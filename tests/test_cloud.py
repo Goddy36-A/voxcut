@@ -20,7 +20,9 @@ class H(BaseHTTPRequestHandler):
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         auth = self.headers.get("Authorization", "")
-        SEEN.append((self.path, auth, body))
+        SEEN.append((self.path, auth, body, self.headers.get("User-Agent", "")))
+        if self.headers.get("User-Agent", "").startswith("Python-urllib"):
+            self.send_response(403); self.end_headers(); self.wfile.write(b"<html>blocked</html>"); return
         if auth != "Bearer good-token":
             self.send_response(401); self.end_headers(); self.wfile.write(b"{}"); return
         out = {"audioBase64": base64.b64encode(b"ID3fake").decode(), "mime": "audio/mpeg"} if self.path.endswith("/tts") else {"ok": True}
@@ -61,6 +63,16 @@ try:
     c.ideas("x"); raise SystemExit("expected NotSignedIn")
 except NotSignedIn:
     pass
+
+# 3b) the User-Agent is VoxCut's (generic Python clients get blocked by some firewalls) and errors are explained
+assert all(s[3].startswith("VoxCut/") for s in SEEN), [s[3] for s in SEEN]
+c.set_key("bad")
+try:
+    c.ideas("x"); raise SystemExit("expected NotSignedIn")
+except NotSignedIn as e:
+    assert "401" in str(e) and "rejected the API key" in str(e), str(e)
+
+assert CloudClient().set_key('  "Bearer qt_abc"  ') == "qt_abc"
 
 # 4) bad media kind
 try:

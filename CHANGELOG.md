@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.1 - Fix "server rejected the API key" for valid keys
+* API requests now identify as `VoxCut/<version>` instead of Python's default `Python-urllib/x`, which firewalls
+  (Cloudflare) can block with a 403.
+* 401 and 403 are now reported separately and include the server's own message instead of a generic "key rejected".
+* The key field tolerates quotes, spaces and a pasted `Bearer ` prefix.
+
 ## 1.5.0 - AI background replacement (offline)
 * New **Background** tab: replace your room with an image, a looping video, a blurred copy of your room, or a solid colour.
 * Uses Robust Video Matting (ONNX, CPU) bundled in `models/` - no internet needed. Edge sharpness, brightness matching and
