@@ -76,5 +76,17 @@ w.preset.setCurrentText("Podcast / voice clean-up (audio only)"); w.apply_preset
 assert w.c_audio_only.isChecked() and w.settings().target_lufs == -16
 w.preset.setCurrentText("TikTok / Reels / Shorts - portrait"); w.apply_preset()
 assert w.settings().orientation == "Portrait 9:16" and not w.c_audio_only.isChecked()
+# 5) background replacement through the UI (validation, then a real run)
+w.preset.setCurrentText("Custom")
+w.m_mode.setCurrentText("Image"); assert "background" in (w.validate(w.settings()) or "").lower()
+w.c_audio_only.setChecked(True); w.m_mode.setCurrentText("Solid colour")
+assert "Audio only" in (w.validate(w.settings()) or ""); w.c_audio_only.setChecked(False)
+w.o_orient.setCurrentText("Keep original"); w.o_quality.setCurrentText("480p"); w.o_look.setCurrentIndex(0)
+w.t_end.setValue(1.0); w.outdir.setText(os.path.join(d, "bgout"))
+w.process(); wait()
+bo = os.path.join(d, "bgout", "clip_enhanced.mp4")
+assert os.path.exists(bo), tidy(w.log.toPlainText())
+assert media_info(bo)["has_audio"] and 0.7 < media_info(bo)["duration"] < 1.4
+print("background via ui ok")
 print("ui ok")
 print("GUI OK")

@@ -37,6 +37,7 @@ jobs:
       - name: Test engine and GUI
         run: |
           python tests/test_engine.py
+          python tests/test_matting.py
           python tests/test_gui.py
           python tests/test_cloud.py
           python tests/test_maker.py
@@ -48,9 +49,10 @@ jobs:
         shell: pwsh
         run: |
           pyinstaller --noconfirm --onefile --windowed --name VoxCut `
-            --icon assets\icon.ico --add-data "assets;assets" `
+            --icon assets\icon.ico --add-data "assets;assets" --add-data "models;models" `
             --add-binary "bin\ffmpeg.exe;bin" --add-binary "bin\ffprobe.exe;bin" `
             --hidden-import PySide6.QtMultimedia --hidden-import PySide6.QtMultimediaWidgets `
+            --collect-all onnxruntime `
             main.py
           Copy-Item dist\VoxCut.exe "dist\VoxCut-${{ github.ref_name }}.exe"
 

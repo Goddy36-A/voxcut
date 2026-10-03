@@ -6,6 +6,8 @@ Video & voice studio for Windows. One `.exe`, no installs. Rendering is 100% off
 (FFmpeg bundled + PySide6); the optional **AI Studio** tab uses the internet (API key required).
 
 ## Features
+- **AI background replacement**: cut yourself out and place yourself in front of any photo or video (e.g. your campus),
+  a blurred copy of your room, or a solid colour. Runs fully offline with a bundled AI model (Robust Video Matting)
 - **Voice**: noise removal, voice-clarity EQ, volume compressor, loudness boost / normalize (LUFS), extra gain
 - **Format**: Landscape 16:9 / Portrait 9:16 / Square / 4:5 with blurred, solid-colour or image background (or crop-fill)
 - **HD conversion**: 480p to 4K, frame-rate selection, 4 compression presets, H.264 / H.265
@@ -25,7 +27,7 @@ Video & voice studio for Windows. One `.exe`, no installs. Rendering is 100% off
 
 ## Get the EXE
 Download `VoxCut-vX.Y.Z.exe` from **Releases**. Or push to `main` and download the **VoxCut-windows**
-artifact from the Actions run. Tag a release (`git tag v1.2.0 && git push --tags`) to publish a new one.
+artifact from the Actions run. Tag a release (`git tag v1.6.0 && git push --tags`) to publish a new one.
 
 ## Run from source
 ```
@@ -33,9 +35,14 @@ pip install -r requirements.txt
 # put ffmpeg.exe + ffprobe.exe in ./bin (or have them on PATH)
 python main.py
 ```
-Tests: `python tests/test_engine.py`, `python tests/test_gui.py` and `python tests/test_cloud.py` and `python tests/test_maker.py` (offline, fake cloud).
+Tests: `python tests/test_engine.py`, `python tests/test_matting.py`, `python tests/test_gui.py` and `python tests/test_cloud.py` and `python tests/test_maker.py` (offline, fake cloud).
 Contributors: start with [CHANGELOG.md](CHANGELOG.md) and [docs/CLOUD.md](docs/CLOUD.md). Regenerate the logo: `python tools/make_icon.py`.
 
 ## Notes
 - The single-file EXE is ~200 MB (FFmpeg inside) and takes a few seconds to unpack on launch.
 - Windows SmartScreen may warn on unsigned apps: *More info -> Run anyway*.
+- AI background replacement is the slowest feature (roughly 1-3x the video length on a typical laptop). Use **Preview** first.
+
+## Third-party components
+FFmpeg (GPL build, bundled), Robust Video Matting model by Peter Lin (GPL-3.0, `models/`), ONNX Runtime (MIT),
+PySide6 (LGPL). Distributing the EXE means following the GPL terms for the FFmpeg and RVM components.

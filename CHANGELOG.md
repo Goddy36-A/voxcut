@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.0 - AI background replacement (offline)
+* New **Background** tab: replace your room with an image, a looping video, a blurred copy of your room, or a solid colour.
+* Uses Robust Video Matting (ONNX, CPU) bundled in `models/` - no internet needed. Edge sharpness, brightness matching and
+  720p/1080p quality options. Works together with Preview, trim, speed, effects, music, intro/outro and batch.
+* New `voxcut/matting.py` and `plan_enhance()` (2-step chain: matting -> normal enhance pipeline); original audio is kept.
+* New `tests/test_matting.py` verifies real pixels (corners become the new background, face/body stay) in every mode.
+* Merged with 1.2.0-1.4.0 (AI Studio, Create video); the Background tab sits beside the offline tools.
+
 ## 1.4.0 - Create finished videos from a prompt
 * New **Create video (AI)** tab: type a prompt, get a finished MP4 (portrait, landscape or square).
 * New `voxcut/maker.py`: compose plan -> per-scene narration + picture/clip + caption -> FFmpeg render -> join -> music mix.
