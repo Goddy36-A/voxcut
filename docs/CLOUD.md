@@ -17,16 +17,29 @@ Rendering is local (FFmpeg). Three things go online, all via the QuoteTube backe
 * Unauthenticated or bad-key requests are rejected server-side -> surfaced as `NotSignedIn` ("API key rejected").
 * Admin settings are intentionally **not** exposed here (deferred).
 
+## Response shapes (verified from live samples)
+* **compose** -> `{kind, templateId, fontId, perSlideSec, voice, narrate, backgroundKind, backgroundQuery, musicQuery,
+  author, items:[{text, author, visual}]}` (see `tests/sample_compose.json`).
+* **tts** -> `{audioBase64, mime:"audio/mpeg"}`.
+* **media** -> `{items:[{id, kind, url, thumb, title, credit, creditUrl, source}], total}`. `url` is a *relative* proxy path
+  (`/api/public/media?u=...`) on the API host; `thumb` is an absolute third-party URL. Not yet verified for `video`/`music` kinds.
+
+## Create video pipeline (`voxcut/maker.py`)
+1. `compose(prompt)` -> plan. 2. Per scene: `tts` (falls back to voice `alloy` if the plan voice is rejected), media search
+by the scene's `visual` phrase (falls back to `backgroundQuery`; retries without `orientation`), caption PNG drawn with Qt,
+FFmpeg scene clip (Ken-Burns zoom for images, loop/crop for clips). 3. Concat scenes. 4. Optional music mix (`musicQuery`).
+Scene length = narration length + 0.9 s (min 3.5 s); without narration, `perSlideSec`.
+Not used yet from the plan: `templateId`, `fontId` (one caption style for now) - good first contributions.
+
 ## Code map
 * `voxcut/cloud.py` - `CloudClient(api_key)` (no Qt): `set_key`, `ideas`, `compose`, `trends`, `tts`, `media`. Env override: `VOXCUT_API_BASE` (handy for staging).
 * `voxcut/gui.py` - `page_ai()` tab "AI Studio (online)": API key, ideas, narration. `compose`, `trends` and `media`
   are implemented in the client but **not yet in the UI** - good first contributions.
-* `tests/test_cloud.py` - offline tests against a local mock server.
+* `voxcut/maker.py` - the video pipeline; GUI tab `page_make()` runs it in `MakerWorker`.
+* `tests/test_cloud.py`, `tests/test_maker.py` - offline tests (mock server / fake cloud).
 
 ## Known gaps / assumptions
-* The TTS response field name is not documented; the client accepts `audio`, `audioContent`, `base64` or `data`.
-  Confirm against the live API and tighten.
-* Response shapes for ideas/media are shown as raw JSON for now.
+* The `ideas` and `trends` replies are shown as raw JSON in the AI Studio tab. Video/music media items are untested against the live API.
 * The live address only works once the web app is **published**.
 
 * Status checks: an unsigned POST returns `401` JSON when the API is published; `404` HTML means the web app was not republished.

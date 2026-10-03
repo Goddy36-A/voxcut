@@ -1,15 +1,21 @@
 """Offline tests for voxcut.cloud using a local mock server (no network, no real account)."""
-import base64, json, os, sys, threading
+import base64, json, os, sys, tempfile, threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from voxcut.cloud import CloudClient, CloudError, NotSignedIn
 
 SEEN = []
+GETS = []
 
 
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
+
+    def do_GET(self):
+        GETS.append((self.path, self.headers.get("Authorization")))
+        self.send_response(200); self.send_header("Content-Type", "image/jpeg"); self.end_headers()
+        self.wfile.write(b"JPEGDATA")
 
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
@@ -17,7 +23,7 @@ class H(BaseHTTPRequestHandler):
         SEEN.append((self.path, auth, body))
         if auth != "Bearer good-token":
             self.send_response(401); self.end_headers(); self.wfile.write(b"{}"); return
-        out = {"audio": base64.b64encode(b"ID3fake").decode()} if self.path.endswith("/tts") else {"ok": True}
+        out = {"audioBase64": base64.b64encode(b"ID3fake").decode(), "mime": "audio/mpeg"} if self.path.endswith("/tts") else {"ok": True}
         self.send_response(200); self.send_header("Content-Type", "application/json"); self.end_headers()
         self.wfile.write(json.dumps(out).encode())
 
@@ -61,4 +67,14 @@ try:
     c.media("gif", "x"); raise SystemExit("expected CloudError")
 except CloudError:
     pass
+# 5) download: relative URL (our host) carries the key; a different host never gets it
+c.set_key("good-token")
+d = tempfile.mkdtemp()
+p = c.download("/api/public/media?u=abc", os.path.join(d, "a"))
+assert p.endswith(".jpg") and open(p, "rb").read() == b"JPEGDATA", p
+assert GETS[-1] == ("/api/public/media?u=abc", "Bearer good-token"), GETS
+other = HTTPServer(("127.0.0.1", 0), H)
+threading.Thread(target=other.serve_forever, daemon=True).start()
+c.download(f"http://127.0.0.1:{other.server_port}/pic", os.path.join(d, "b"))
+assert GETS[-1] == ("/pic", None), GETS
 print("cloud tests OK")

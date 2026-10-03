@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QColorDialog, QComboBox,
 
 from . import __version__
 from .cloud import CloudClient, CloudError
+from .maker import FORMATS as MAKER_FORMATS, Cancelled, make_video
 from .engine import (AUDIO_FORMATS, CODECS, COLOR_PRESETS, COMPRESSION, FIT_MODES, ORIENTATIONS, QUALITIES,
                      WM_POSITIONS, Job, Settings, build_command, plan_add_audio, plan_extract_audio,
                      plan_remove_audio)
@@ -179,6 +180,32 @@ class Worker(QThread):
         self.stop = True
         if self.job:
             self.job.cancel()
+
+
+class MakerWorker(QThread):
+    status = Signal(str)
+    progress = Signal(float)
+    finished_ok = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, cloud, prompt, out, fmt, narrate, music):
+        super().__init__()
+        self.args = (cloud, prompt, out)
+        self.kw = dict(fmt=fmt, narrate=narrate, music=music)
+        self.stop = False
+
+    def run(self):
+        try:
+            res = make_video(*self.args, on_status=self.status.emit, on_progress=self.progress.emit,
+                             should_cancel=lambda: self.stop, **self.kw)
+            self.finished_ok.emit(res)
+        except Cancelled:
+            self.failed.emit("Cancelled")
+        except Exception as e:  # noqa: BLE001
+            self.failed.emit(str(e))
+
+    def cancel(self):
+        self.stop = True
 
 
 # --------------------------------------------------------------------------- preview window
@@ -402,6 +429,7 @@ class Main(QMainWindow):
         pages = [("Voice", self.page_voice()), ("Format & Quality", self.page_format()),
                  ("Effects & Colour", self.page_effects()), ("Music", self.page_music()),
                  ("Intro / Outro", self.page_intro()), ("Audio / Video tools", self.page_tools()),
+                 ("Create video (AI)", self.page_make()),
                  ("AI Studio (online)", self.page_ai()),
                  ("Appearance", self.page_appearance())]
         for name, page in pages:
@@ -563,9 +591,100 @@ class Main(QMainWindow):
         l2.addWidget(b)
         return make_page(f, f2)
 
+    def page_make(self):
+        """Prompt in, finished video out. Planning/voice/media come online; rendering happens on this PC."""
+        self.cloud = CloudClient()
+        f, l = card("Create a finished video", "Describe the video. VoxCut gets a plan, narration, pictures/clips and "
+                    "music online (needs your API key - set it in the AI Studio tab), then builds the MP4 here on your PC.")
+        self.mk_prompt = QTextEdit()
+        self.mk_prompt.setPlaceholderText("e.g. A five-part story about friendship with warm visuals")
+        self.mk_prompt.setFixedHeight(90)
+        self.mk_fmt = combo(list(MAKER_FORMATS), list(MAKER_FORMATS)[0])
+        self.mk_narr = QCheckBox("AI narration")
+        self.mk_narr.setChecked(True)
+        self.mk_music = QCheckBox("Background music")
+        self.mk_music.setChecked(True)
+        self.mk_go = QPushButton("Create video")
+        self.mk_go.clicked.connect(self.make_start)
+        self.mk_cancel = QPushButton("Cancel")
+        self.mk_cancel.setEnabled(False)
+        self.mk_cancel.clicked.connect(lambda: self.mk_worker and self.mk_worker.cancel())
+        self.mk_bar = QProgressBar()
+        self.mk_bar.setRange(0, 100)
+        self.mk_status = QLabel("")
+        self.mk_status.setObjectName("muted")
+        self.mk_status.setWordWrap(True)
+        self.mk_play = QPushButton("Play result")
+        self.mk_folder = QPushButton("Open folder")
+        self.mk_play.hide()
+        self.mk_folder.hide()
+        self.mk_out = ""
+        self.mk_worker = None
+        self.mk_play.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(self.mk_out)))
+        self.mk_folder.clicked.connect(
+            lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(self.mk_out))))
+        l.addWidget(self.mk_prompt)
+        l.addWidget(row("Format", self.mk_fmt))
+        l.addWidget(self.mk_narr)
+        l.addWidget(self.mk_music)
+        l.addWidget(self.mk_go)
+        l.addWidget(self.mk_cancel)
+        l.addWidget(self.mk_bar)
+        l.addWidget(self.mk_status)
+        l.addWidget(self.mk_play)
+        l.addWidget(self.mk_folder)
+        return make_page(f)
+
+    def make_start(self):
+        prompt = self.mk_prompt.toPlainText().strip()
+        if not prompt:
+            return
+        if not self.cloud.signed_in:
+            QMessageBox.information(self, "VoxCut", "Paste your API key in the AI Studio tab first, then click Use key.")
+            return
+        out, _ = QFileDialog.getSaveFileName(self, "Save video as", "VoxCut AI video.mp4", "MP4 video (*.mp4)")
+        if not out:
+            return
+        self.mk_out = out
+        self.mk_go.setEnabled(False)
+        self.mk_cancel.setEnabled(True)
+        self.mk_play.hide()
+        self.mk_folder.hide()
+        self.mk_bar.setValue(0)
+        keep_awake(True)
+        w = MakerWorker(self.cloud, prompt, out, self.mk_fmt.currentText(), self.mk_narr.isChecked(),
+                        self.mk_music.isChecked())
+        self.mk_worker = w
+        w.status.connect(self.mk_status.setText)
+        w.progress.connect(lambda p: self.mk_bar.setValue(int(p)))
+        w.finished_ok.connect(self.make_done)
+        w.failed.connect(self.make_failed)
+        w.start()
+
+    def _make_reset(self):
+        keep_awake(False)
+        self.mk_go.setEnabled(True)
+        self.mk_cancel.setEnabled(False)
+
+    def make_done(self, res):
+        self._make_reset()
+        self.mk_bar.setValue(100)
+        msg = f"Done - {res['scenes']} scenes, {res['duration']:.0f}s. Saved to {res['path']}"
+        if res.get("notes"):
+            msg += "\n" + "\n".join(res["notes"])
+        self.mk_status.setText(msg)
+        self.mk_play.show()
+        self.mk_folder.show()
+
+    def make_failed(self, err):
+        self._make_reset()
+        self.mk_status.setText("Stopped: " + err)
+        if err != "Cancelled":
+            QMessageBox.warning(self, "VoxCut", err)
+
     def page_ai(self):
         """Online-only helpers (sign-in required). Rendering itself never leaves this PC."""
-        self.cloud = CloudClient()
+        self.cloud = getattr(self, "cloud", None) or CloudClient()
         f, l = card("API key", "Paste the API key from your QuoteTube web app. Needed for AI writing and "
                     "narration only - rendering stays offline. Treat it like a password.")
         self.ai_key = QLineEdit(self.qs.value("ai_key", ""))

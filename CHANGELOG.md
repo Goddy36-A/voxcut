@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.0 - Create finished videos from a prompt
+* New **Create video (AI)** tab: type a prompt, get a finished MP4 (portrait, landscape or square).
+* New `voxcut/maker.py`: compose plan -> per-scene narration + picture/clip + caption -> FFmpeg render -> join -> music mix.
+  Planning, voice and media are online; all rendering is local. Writes `<video>.credits.txt` with media credits.
+* Fixed to the real API shapes: TTS returns `{"audioBase64","mime"}`; media returns `items[]` with a relative proxy `url`
+  (resolved against the API host) and an absolute `thumb`. The API key is only sent to the API host, never to media hosts.
+* New `tests/test_maker.py` (end-to-end with a fake cloud and the real compose sample `tests/sample_compose.json`).
+
 ## 1.3.0 - API-key auth
 * AI Studio now uses a single **API key** field (Bearer token) instead of email + password.
 * Removed the `supabase` dependency and its CI bundling flag.

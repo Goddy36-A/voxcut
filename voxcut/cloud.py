@@ -92,9 +92,9 @@ class CloudClient:
                           {"action": "trends", "niche": niche, "platform": platform, "count": int(count)})
 
     def tts(self, text, voice="alloy"):
-        """Returns raw MP3 bytes (server sends base64)."""
+        """Returns raw MP3 bytes. Server replies {"audioBase64": "...", "mime": "audio/mpeg"}."""
         res = self._post("/api/public/v1/tts", {"text": text, "voice": voice})
-        b64 = res.get("audio") or res.get("audioContent") or res.get("base64") or res.get("data")
+        b64 = res.get("audioBase64")
         if not b64:
             raise CloudError(f"No audio in response (keys: {sorted(res)}).")
         return base64.b64decode(b64)
@@ -107,3 +107,42 @@ class CloudClient:
         if orientation:
             body["orientation"] = orientation
         return self._post("/api/public/v1/media", body)
+
+    def media_items(self, kind, query, orientation=None, page=1):
+        """media() -> list of items: {id, kind, url, thumb, title, credit, creditUrl, source}."""
+        return self.media(kind, query, orientation, page).get("items") or []
+
+    def download(self, url, dest_no_ext, max_bytes=80_000_000):
+        """Download a media URL; returns the saved path (extension chosen from Content-Type).
+
+        Relative URLs (e.g. /api/public/media?u=...) are resolved against the API host and get the
+        key. Absolute URLs on other hosts never receive the key.
+        """
+        import urllib.parse
+        full = urllib.parse.urljoin(self.api_base + "/", url)
+        headers = {"User-Agent": "VoxCut"}
+        if urllib.parse.urlparse(full).netloc == urllib.parse.urlparse(self.api_base).netloc:
+            headers["Authorization"] = f"Bearer {self.access_token()}"
+        req = urllib.request.Request(full, headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+                ctype = (r.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+                ext = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "video/mp4": ".mp4",
+                       "video/webm": ".webm", "audio/mpeg": ".mp3", "audio/mp3": ".mp3", "audio/wav": ".wav",
+                       "audio/ogg": ".ogg"}.get(ctype) or os.path.splitext(urllib.parse.urlparse(full).path)[1] or ".bin"
+                path, size = dest_no_ext + ext, 0
+                with open(path, "wb") as f:
+                    while True:
+                        chunk = r.read(1 << 16)
+                        if not chunk:
+                            break
+                        size += len(chunk)
+                        if size > max_bytes:
+                            f.close(); os.remove(path)
+                            raise CloudError("Media file too large, skipped.")
+                        f.write(chunk)
+                return path
+        except urllib.error.HTTPError as e:
+            raise CloudError(f"Download failed ({e.code}).") from e
+        except urllib.error.URLError as e:
+            raise CloudError(f"Download failed: {e.reason}") from e
