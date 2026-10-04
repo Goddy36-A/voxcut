@@ -32,7 +32,7 @@ Scene length = narration length + 0.9 s (min 3.5 s); without narration, `perSlid
 Not used yet from the plan: `templateId`, `fontId` (one caption style for now) - good first contributions.
 
 ## Code map
-* `voxcut/cloud.py` - `CloudClient(api_key)` (no Qt): `set_key`, `ideas`, `compose`, `trends`, `tts`, `media`. Env override: `VOXCUT_API_BASE` (handy for staging).
+* `voxcut/cloud.py` - `CloudClient(api_key)` (no Qt): `set_key`, `ideas`, `compose`, `trends`, `tts`, `media`. Env override: `IDEAWOOD_API_BASE` (old `VOXCUT_API_BASE` still works) (handy for staging).
 * `voxcut/gui.py` - `page_ai()` tab "AI Studio (online)": API key, ideas, narration. `compose`, `trends` and `media`
   are implemented in the client but **not yet in the UI** - good first contributions.
 * `voxcut/maker.py` - the video pipeline; GUI tab `page_make()` runs it in `MakerWorker`.

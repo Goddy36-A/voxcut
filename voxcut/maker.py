@@ -170,7 +170,7 @@ def make_video(cloud: CloudClient, prompt: str, out_path: str, fmt: str = "Portr
     ff = find_tool("ffmpeg")
     notes: list[str] = []
     credits: list[str] = []
-    work = tempfile.mkdtemp(prefix="voxcut_ai_")
+    work = tempfile.mkdtemp(prefix="ideawood_ai_")
     current: dict = {"job": None}
 
     def check():

@@ -74,7 +74,7 @@ def test_all():
     print("combined + preview ok")
 
     # leftovers are cleaned up
-    assert not [f for f in os.listdir(tempfile.gettempdir()) if f.startswith("voxcut_bg_")]
+    assert not [f for f in os.listdir(tempfile.gettempdir()) if f.startswith("ideawood_bg_")]
     print("MATTING OK")
 
 

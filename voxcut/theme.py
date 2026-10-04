@@ -102,7 +102,7 @@ def _rgba(hex_color: str, a: float) -> str:
 
 
 def _make_icons(muted: str):
-    d = os.path.join(tempfile.gettempdir(), "voxcut_ui")
+    d = os.path.join(tempfile.gettempdir(), "ideawood_ui")
     os.makedirs(d, exist_ok=True)
     tag = muted.lstrip("#")
     paths = {}

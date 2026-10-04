@@ -58,7 +58,7 @@ print("tools ok")
 w.o_quality.setCurrentText("1080p (Full HD)")
 w.preview(); wait()
 import glob
-pv = sorted(glob.glob(os.path.join(tempfile.gettempdir(), f"voxcut_preview_{os.getpid()}_*.mp4")))[-1]
+pv = sorted(glob.glob(os.path.join(tempfile.gettempdir(), f"ideawood_preview_{os.getpid()}_*.mp4")))[-1]
 assert os.path.exists(pv)
 i = media_info(pv); assert i["h"] <= 860 and 1.5 < i["duration"] < 3.2, i
 assert w.pv_dialog is not None; app.processEvents()

@@ -48,21 +48,21 @@ jobs:
       - name: Build EXE
         shell: pwsh
         run: |
-          pyinstaller --noconfirm --onefile --windowed --name VoxCut `
+          pyinstaller --noconfirm --onefile --windowed --name IdeawoodStudio `
             --icon assets\icon.ico --add-data "assets;assets" --add-data "models;models" `
             --add-binary "bin\ffmpeg.exe;bin" --add-binary "bin\ffprobe.exe;bin" `
             --hidden-import PySide6.QtMultimedia --hidden-import PySide6.QtMultimediaWidgets `
             --collect-all onnxruntime `
             main.py
-          Copy-Item dist\VoxCut.exe "dist\VoxCut-${{ github.ref_name }}.exe"
+          Copy-Item dist\IdeawoodStudio.exe "dist\IdeawoodStudio-${{ github.ref_name }}.exe"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: VoxCut-windows
-          path: dist/VoxCut.exe
+          name: IdeawoodStudio-windows
+          path: dist/IdeawoodStudio.exe
 
       - name: Publish release (tags only)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/VoxCut-${{ github.ref_name }}.exe
+          files: dist/IdeawoodStudio-${{ github.ref_name }}.exe

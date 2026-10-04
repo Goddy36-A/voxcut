@@ -1,4 +1,4 @@
-# VoxCut
+# Ideawood Studio
 
 <img src="assets/icon.png" width="96" align="right">
 
@@ -26,7 +26,7 @@ Video & voice studio for Windows. One `.exe`, no installs. Rendering is 100% off
 - **AI Studio (online, optional)**: paste your QuoteTube API key for AI quote ideas and narration (MP3). See [docs/CLOUD.md](docs/CLOUD.md)
 
 ## Get the EXE
-Download `VoxCut-vX.Y.Z.exe` from **Releases**. Or push to `main` and download the **VoxCut-windows**
+Download `IdeawoodStudio-vX.Y.Z.exe` from **Releases**. Or push to `main` and download the **IdeawoodStudio-windows**
 artifact from the Actions run. Tag a release (`git tag v1.6.0 && git push --tags`) to publish a new one.
 
 ## Run from source
@@ -46,3 +46,5 @@ Contributors: start with [CHANGELOG.md](CHANGELOG.md) and [docs/CLOUD.md](docs/C
 ## Third-party components
 FFmpeg (GPL build, bundled), Robust Video Matting model by Peter Lin (GPL-3.0, `models/`), ONNX Runtime (MIT),
 PySide6 (LGPL). Distributing the EXE means following the GPL terms for the FFmpeg and RVM components.
+
+> Formerly "VoxCut". The internal Python package is still named `voxcut/` to keep imports stable; only the product name changed.

@@ -439,7 +439,7 @@ def plan_enhance(main: str, out: str, s: Settings, preview: Optional[tuple[float
     if end - start < 0.1:
         raise RuntimeError("The trim / preview range is empty. Check Start and End times.")
     size = work_size(minfo["w"], minfo["h"], MAT_QUALITY[s.mat_quality])
-    tmp = os.path.join(tempfile.gettempdir(), f"voxcut_bg_{uuid.uuid4().hex[:8]}.mp4")
+    tmp = os.path.join(tempfile.gettempdir(), f"ideawood_bg_{uuid.uuid4().hex[:8]}.mp4")
     s2 = dataclasses.replace(s, mat_mode="Off", trim_start=0.0, trim_end=0.0)
 
     def step1():

@@ -64,8 +64,8 @@ try:
 except NotSignedIn:
     pass
 
-# 3b) the User-Agent is VoxCut's (generic Python clients get blocked by some firewalls) and errors are explained
-assert all(s[3].startswith("VoxCut/") for s in SEEN), [s[3] for s in SEEN]
+# 3b) the User-Agent is Ideawood Studio's (generic Python clients get blocked by some firewalls) and errors are explained
+assert all(s[3].startswith("IdeawoodStudio/") for s in SEEN), [s[3] for s in SEEN]
 c.set_key("bad")
 try:
     c.ideas("x"); raise SystemExit("expected NotSignedIn")

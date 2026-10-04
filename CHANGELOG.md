@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.0 - Renamed to Ideawood Studio
+* Product name is now **Ideawood Studio** (window, popups, tray, README). The EXE is `IdeawoodStudio.exe`; the CI
+  artifact is `IdeawoodStudio-windows`; API requests send `IdeawoodStudio/<version>` as User-Agent.
+* Saved settings (including a remembered API key) are copied once from the old "VoxCut" settings location.
+* Env var `IDEAWOOD_API_BASE` replaces `VOXCUT_API_BASE` (the old name is still read).
+* Temp-file prefixes changed `voxcut_*` -> `ideawood_*`.
+* Kept: the Python package folder `voxcut/` (internal only). Older entries below keep the old name for history.
+
 ## 1.5.1 - Fix "server rejected the API key" for valid keys
 * API requests now identify as `VoxCut/<version>` instead of Python's default `Python-urllib/x`, which firewalls
   (Cloudflare) can block with a 403.

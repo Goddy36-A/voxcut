@@ -281,11 +281,23 @@ class PreviewDialog(QDialog):
 
 
 # --------------------------------------------------------------------------- main window
+def _migrate_settings(new):
+    """One-time copy of settings saved under the old product name (VoxCut) so users keep their preferences."""
+    if new.value("_migrated_from_voxcut", False, type=bool):
+        return
+    old = QSettings("VoxCut", "VoxCut")
+    if not new.allKeys():
+        for k in old.allKeys():
+            new.setValue(k, old.value(k))
+    new.setValue("_migrated_from_voxcut", True)
+
+
 class Main(QMainWindow):
     def __init__(self, app):
         super().__init__()
         self.app = app
-        self.qs = QSettings("VoxCut", "VoxCut")
+        self.qs = QSettings("Ideawood", "IdeawoodStudio")
+        _migrate_settings(self.qs)
         self.worker = None
         self.bg_color = "black"
         self.last_out_dir = ""
@@ -293,7 +305,7 @@ class Main(QMainWindow):
         self.after = None
         self.pv_dialog = None
         self.pv_n = 0
-        self.setWindowTitle(f"VoxCut {__version__}")
+        self.setWindowTitle(f"Ideawood Studio {__version__}")
         self.setWindowIcon(QIcon(asset_path("icon.png")))
         self.resize(1260, 800)
         self.setMinimumSize(1000, 660)
@@ -316,7 +328,7 @@ class Main(QMainWindow):
         if QSystemTrayIcon.isSystemTrayAvailable():
             self.tray = QSystemTrayIcon(QIcon(asset_path("icon.png")), self)
             m = QMenu()
-            m.addAction("Show VoxCut", self._restore)
+            m.addAction("Show Ideawood Studio", self._restore)
             m.addAction("Quit", self.app.quit)
             self.tray.setContextMenu(m)
             self.tray.activated.connect(lambda *_: self._restore())
@@ -333,7 +345,7 @@ class Main(QMainWindow):
         h.addWidget(logo)
         col = QVBoxLayout()
         col.setSpacing(0)
-        t = QLabel("VoxCut")
+        t = QLabel("Ideawood Studio")
         t.setObjectName("title")
         st = QLabel("Offline video & voice studio")
         st.setObjectName("muted")
@@ -644,7 +656,7 @@ class Main(QMainWindow):
     def page_make(self):
         """Prompt in, finished video out. Planning/voice/media come online; rendering happens on this PC."""
         self.cloud = CloudClient()
-        f, l = card("Create a finished video", "Describe the video. VoxCut gets a plan, narration, pictures/clips and "
+        f, l = card("Create a finished video", "Describe the video. Ideawood Studio gets a plan, narration, pictures/clips and "
                     "music online (needs your API key - set it in the AI Studio tab), then builds the MP4 here on your PC.")
         self.mk_prompt = QTextEdit()
         self.mk_prompt.setPlaceholderText("e.g. A five-part story about friendship with warm visuals")
@@ -690,9 +702,9 @@ class Main(QMainWindow):
         if not prompt:
             return
         if not self.cloud.signed_in:
-            QMessageBox.information(self, "VoxCut", "Paste your API key in the AI Studio tab first, then click Use key.")
+            QMessageBox.information(self, "Ideawood Studio", "Paste your API key in the AI Studio tab first, then click Use key.")
             return
-        out, _ = QFileDialog.getSaveFileName(self, "Save video as", "VoxCut AI video.mp4", "MP4 video (*.mp4)")
+        out, _ = QFileDialog.getSaveFileName(self, "Save video as", "Ideawood Studio AI video.mp4", "MP4 video (*.mp4)")
         if not out:
             return
         self.mk_out = out
@@ -730,7 +742,7 @@ class Main(QMainWindow):
         self._make_reset()
         self.mk_status.setText("Stopped: " + err)
         if err != "Cancelled":
-            QMessageBox.warning(self, "VoxCut", err)
+            QMessageBox.warning(self, "Ideawood Studio", err)
 
     def page_ai(self):
         """Online-only helpers (sign-in required). Rendering itself never leaves this PC."""
@@ -783,7 +795,7 @@ class Main(QMainWindow):
             QApplication.setOverrideCursor(Qt.WaitCursor)
             return fn()
         except CloudError as e:
-            QMessageBox.warning(self, "VoxCut online", str(e))
+            QMessageBox.warning(self, "Ideawood Studio online", str(e))
         finally:
             QApplication.restoreOverrideCursor()
         return None
@@ -990,7 +1002,7 @@ class Main(QMainWindow):
     # ---------------- running work
     def need_files(self):
         if not self.files():
-            QMessageBox.information(self, "VoxCut", "Add at least one video first.")
+            QMessageBox.information(self, "Ideawood Studio", "Add at least one video first.")
             return False
         return True
 
@@ -1036,7 +1048,7 @@ class Main(QMainWindow):
         if self.c_notify.isChecked() and not cancelled:
             QApplication.alert(self, 0)
             if self.tray:
-                self.tray.showMessage("VoxCut", msg, QSystemTrayIcon.Information, 6000)
+                self.tray.showMessage("Ideawood Studio", msg, QSystemTrayIcon.Information, 6000)
         if self.c_openwhen.isChecked() and ok and not cancelled:
             self.open_out()
 
@@ -1051,7 +1063,7 @@ class Main(QMainWindow):
         s = self.settings()
         err = self.validate(s)
         if err:
-            QMessageBox.warning(self, "VoxCut", err)
+            QMessageBox.warning(self, "Ideawood Studio", err)
             return
         tasks = []
         for f in self.files():
@@ -1065,7 +1077,7 @@ class Main(QMainWindow):
         s = self.settings()
         err = self.validate(s)
         if err:
-            QMessageBox.warning(self, "VoxCut", err)
+            QMessageBox.warning(self, "Ideawood Studio", err)
             return
         sel = self.listw.selectedItems()
         f = sel[0].data(Qt.UserRole) if sel else self.files()[0]
@@ -1073,7 +1085,7 @@ class Main(QMainWindow):
             self.pv_dialog.close()
             self.pv_dialog = None
         self.pv_n += 1
-        out = os.path.join(tempfile.gettempdir(), f"voxcut_preview_{os.getpid()}_{self.pv_n}.mp4")
+        out = os.path.join(tempfile.gettempdir(), f"ideawood_preview_{os.getpid()}_{self.pv_n}.mp4")
         ps, pl = self.p_start.value(), self.p_len.value()
         self.begin([(os.path.basename(f), lambda: plan_enhance(f, out, s, preview=(ps, pl)))],
                    "Rendering preview", after=self._show_preview)
@@ -1090,7 +1102,7 @@ class Main(QMainWindow):
         if kind == "add":
             audio = self.a_file.value()
             if not audio or not os.path.isfile(audio):
-                QMessageBox.information(self, "VoxCut", "Choose an audio file first.")
+                QMessageBox.information(self, "Ideawood Studio", "Choose an audio file first.")
                 return
         for f in self.files():
             base = os.path.basename(f)
@@ -1117,7 +1129,7 @@ class Main(QMainWindow):
         if self.pv_dialog is not None:
             self.pv_dialog.close()
         import glob
-        for p in glob.glob(os.path.join(tempfile.gettempdir(), f"voxcut_preview_{os.getpid()}_*.mp4")):
+        for p in glob.glob(os.path.join(tempfile.gettempdir(), f"ideawood_preview_{os.getpid()}_*.mp4")):
             try:
                 os.remove(p)
             except OSError:
@@ -1128,11 +1140,11 @@ class Main(QMainWindow):
 def main():
     if os.name == "nt":
         try:
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("VoxCut.Studio")
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Ideawood.Studio")
         except Exception:  # noqa: BLE001
             pass
     app = QApplication(sys.argv)
-    app.setApplicationName("VoxCut")
+    app.setApplicationName("Ideawood Studio")
     app.setWindowIcon(QIcon(asset_path("icon.png")))
     w = Main(app)
     w.add_paths(sys.argv[1:])

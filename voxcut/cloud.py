@@ -17,7 +17,7 @@ import urllib.error
 import urllib.request
 
 # Override via env for staging.
-API_BASE = os.environ.get("VOXCUT_API_BASE", "https://quotetube.lovable.app").rstrip("/")
+API_BASE = os.environ.get("IDEAWOOD_API_BASE") or os.environ.get("VOXCUT_API_BASE") or "https://quotetube.lovable.app".rstrip("/")
 
 MEDIA_KINDS = ("image", "video", "music")
 IDEA_KINDS = ("quote",)  # extend as the server adds more
@@ -26,7 +26,7 @@ try:
     from . import __version__ as _v
 except Exception:  # noqa: BLE001
     _v = "0"
-USER_AGENT = f"VoxCut/{_v} (Windows desktop app)"
+USER_AGENT = f"IdeawoodStudio/{_v} (Windows desktop app)"
 
 
 def _server_message(raw: str) -> str:
