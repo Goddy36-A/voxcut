@@ -41,6 +41,8 @@ jobs:
           python tests/test_gui.py
           python tests/test_cloud.py
           python tests/test_maker.py
+          python tests/test_recorder.py
+          python tests/test_lecture.py
         env:
           QT_QPA_PLATFORM: offscreen
           PYTHONUTF8: "1"

@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.7.0 - Lecture recorder for tutors
+* New **Lecture recorder** tab (first tab): record a monitor, a window, a dragged area or the whiteboard - other programs
+  included - with **no time limit** (segment-based, pause/resume, crash recovery), webcam picture-in-picture, microphone
+  and optional computer sound.
+* On-screen tools while recording: pen, marker pen, arrow, box, eraser, laser pointer, spotlight, cursor ring; floating
+  toolbar that is hidden from the recording; global hotkeys (Ctrl+Alt+P/S/D/C/W/M).
+* New **Whiteboard**: pages, 7 backgrounds, pen/highlighter/line/arrow/rect/ellipse/text/eraser, undo/redo, PNG + PDF export.
+* Chapter markers -> `<video>.chapters.txt` for YouTube; optional voice cleanup after recording; send to editor queue.
+* "Test my setup (5 seconds)" with mic level check; "Recover a recording after a crash".
+* New modules `drawing.py`, `whiteboard.py`, `overlay.py`, `recorder.py`, `lecture_ui.py`; tests `test_recorder.py`,
+  `test_lecture.py`; docs `docs/LECTURE.md`. Windows-only capture paths are documented as untested in CI.
+
 ## 1.6.0 - Renamed to Ideawood Studio
 * Product name is now **Ideawood Studio** (window, popups, tray, README). The EXE is `IdeawoodStudio.exe`; the CI
   artifact is `IdeawoodStudio-windows`; API requests send `IdeawoodStudio/<version>` as User-Agent.

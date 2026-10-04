@@ -22,6 +22,7 @@ Video & voice studio for Windows. One `.exe`, no installs. Rendering is 100% off
 - **Batch** processing, drag & drop, cancel, tray notification when finished, prevents PC sleep during renders
 - **Themes**: Midnight, Graphite, Ocean, Sunset, Forest, Light + custom accent colours and text size
 
+- **Lecture recorder** (for tutors): record any screen/window/area with no time limit, webcam + mic, draw on screen, laser/spotlight, whiteboard, chapter markers, auto voice cleanup. See [docs/LECTURE.md](docs/LECTURE.md)
 - **Create video (AI)**: prompt -> finished MP4 with AI plan, narration, pictures/clips, captions and music. See [docs/CLOUD.md](docs/CLOUD.md)
 - **AI Studio (online, optional)**: paste your QuoteTube API key for AI quote ideas and narration (MP3). See [docs/CLOUD.md](docs/CLOUD.md)
 
@@ -35,7 +36,7 @@ pip install -r requirements.txt
 # put ffmpeg.exe + ffprobe.exe in ./bin (or have them on PATH)
 python main.py
 ```
-Tests: `python tests/test_engine.py`, `python tests/test_matting.py`, `python tests/test_gui.py` and `python tests/test_cloud.py` and `python tests/test_maker.py` (offline, fake cloud).
+Tests: `python tests/test_engine.py`, `python tests/test_matting.py`, `python tests/test_gui.py` and `python tests/test_cloud.py` and `python tests/test_maker.py` (offline, fake cloud), `python tests/test_recorder.py` and `python tests/test_lecture.py` (recorder, whiteboard, overlay).
 Contributors: start with [CHANGELOG.md](CHANGELOG.md) and [docs/CLOUD.md](docs/CLOUD.md). Regenerate the logo: `python tools/make_icon.py`.
 
 ## Notes

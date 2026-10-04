@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QColorDialog, QComboBox,
 
 from . import __version__
 from .cloud import CloudClient, CloudError
+from .lecture_ui import LecturePanel
 from .maker import FORMATS as MAKER_FORMATS, Cancelled, make_video
 from .engine import (AUDIO_FORMATS, CODECS, COLOR_PRESETS, COMPRESSION, FIT_MODES, ORIENTATIONS, QUALITIES,
                      WM_POSITIONS, Job, Settings, plan_add_audio, plan_enhance, plan_extract_audio,
@@ -442,7 +443,8 @@ class Main(QMainWindow):
         self.nav.setObjectName("nav")
         self.nav.setFixedWidth(176)
         self.stack = QStackedWidget()
-        pages = [("Voice", self.page_voice()), ("Background", self.page_background()),
+        self.lecture = LecturePanel(self)
+        pages = [("Lecture recorder", self.lecture.page), ("Voice", self.page_voice()), ("Background", self.page_background()),
                  ("Format & Quality", self.page_format()),
                  ("Effects & Colour", self.page_effects()), ("Music", self.page_music()),
                  ("Intro / Outro", self.page_intro()), ("Audio / Video tools", self.page_tools()),
@@ -1122,6 +1124,7 @@ class Main(QMainWindow):
         self.begin(tasks, "Working")
 
     def closeEvent(self, e):
+        self.lecture.shutdown()
         if self.worker and self.worker.isRunning():
             self.worker.cancel()
             self.worker.wait(3000)
