@@ -260,6 +260,10 @@ class WhiteboardWindow(QMainWindow):
             a = QAction(text, self)
             a.triggered.connect(fn)
             tb.addAction(a)
+        ai = QAction("Board AI...", self)
+        ai.setToolTip("Read handwriting, explain the board, finish a sketch, export lecture notes")
+        ai.triggered.connect(self.open_ai)
+        tb.addAction(ai)
         fs = QAction("Fullscreen (F11)", self)
         fs.setShortcut("F11")
         fs.triggered.connect(self.toggle_fullscreen)
@@ -294,6 +298,13 @@ class WhiteboardWindow(QMainWindow):
 
     def _page_label(self):
         self.page_lbl.setText(f" Page {self.canvas.page + 1}/{len(self.canvas.pages)} ")
+
+    def open_ai(self):
+        from .board_ai_ui import BoardAIDialog
+        if getattr(self, "ai_dialog", None) is None:
+            self.ai_dialog = BoardAIDialog(self.canvas, self)
+        self.ai_dialog.show()
+        self.ai_dialog.raise_()
 
     def toggle_fullscreen(self):
         self.showNormal() if self.isFullScreen() else self.showFullScreen()

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.8.0 - Board AI for the whiteboard (includes the 1.7.1 recording fix)
+* Whiteboard: new **Board AI...** button (second toolbar row). Read handwriting and formulas (text + LaTeX), explain the
+  board (title, summary, key points, quiz questions), finish a sketch (editable labels/arrows/boxes + preview), and save
+  lecture notes as Markdown. Uses the DoodleDraw app API with its own key (`x-api-key`).
+* Finished shapes are added to a NEW whiteboard page, so the original board is never overwritten.
+* New `voxcut/board_ai.py`, `voxcut/board_ai_ui.py`, `docs/BOARD_AI.md`, `tests/test_board_ai.py` (mock server).
+* GitHub releases now get their notes from this changelog; release title is "Ideawood Studio vX.Y.Z".
+* Heads-up: only the `read` and `explain` request/response fields are confirmed; the `finish` task name and the shape format
+  are best-effort until checked against the live API (see docs/BOARD_AI.md).
+
 ## 1.7.1 - Fix: "Could not start recording" (thread_queue_size)
 * The newest FFmpeg (bundled in the EXE) rejects `-thread_queue_size` on an input; the screen/device inputs no longer use it.
   Cause of the miss: tests ran on FFmpeg 6.1 while the bundle is FFmpeg master. Verified now against FFmpeg master.
