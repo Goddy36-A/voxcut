@@ -184,7 +184,7 @@ class RecordConfig:
 
 
 def _screen_input(cfg: RecordConfig) -> List[str]:
-    a = ["-thread_queue_size", "1024", "-f", "gdigrab", "-framerate", str(cfg.fps),
+    a = ["-f", "gdigrab", "-framerate", str(cfg.fps),
          "-draw_mouse", "1" if cfg.draw_mouse else "0"]
     if cfg.region:
         x, y, w, h = cfg.region
@@ -193,7 +193,7 @@ def _screen_input(cfg: RecordConfig) -> List[str]:
 
 
 def _dshow(kind: str, name: str, extra: Optional[List[str]] = None) -> List[str]:
-    return ["-thread_queue_size", "1024", "-f", "dshow", "-rtbufsize", "256M", *(extra or []), "-i", f"{kind}={name}"]
+    return ["-f", "dshow", "-rtbufsize", "256M", *(extra or []), "-i", f"{kind}={name}"]
 
 
 def build_segment_cmd(cfg: RecordConfig, seg_path: str, ff: str = "ffmpeg") -> List[str]:

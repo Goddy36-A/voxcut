@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.1 - Fix: "Could not start recording" (thread_queue_size)
+* The newest FFmpeg (bundled in the EXE) rejects `-thread_queue_size` on an input; the screen/device inputs no longer use it.
+  Cause of the miss: tests ran on FFmpeg 6.1 while the bundle is FFmpeg master. Verified now against FFmpeg master.
+* New `tests/test_windows_capture.py` (runs only on Windows, i.e. in CI with the bundled FFmpeg): real gdigrab/dshow command
+  lines must be accepted by FFmpeg, and the Windows monitor/window/device/hotkey code must run.
+* Recorder duration test compares against recorded wall time (FFmpeg-version independent).
+
 ## 1.7.0 - Lecture recorder for tutors
 * New **Lecture recorder** tab (first tab): record a monitor, a window, a dragged area or the whiteboard - other programs
   included - with **no time limit** (segment-based, pause/resume, crash recovery), webcam picture-in-picture, microphone

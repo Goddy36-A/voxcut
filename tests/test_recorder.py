@@ -31,6 +31,7 @@ assert parse_dshow_list(old) == {"video": ["USB2.0 Camera"], "audio": ["Mic (USB
 c = build_segment_cmd(RecordConfig("x.mp4", region=(100, 50, 1281, 721), mic="Mic (USB)", camera="USB2.0 Camera",
                                    sys_audio="Stereo Mix (Realtek)"), "seg.mkv")
 j = " ".join(c)
+assert "thread_queue_size" not in j          # removed in newer FFmpeg (input option rejected)
 assert "gdigrab" in j and "-offset_x 100" in j and "-video_size 1280x720" in j      # even-sized region
 assert "audio=Mic (USB)" in j and "video=USB2.0 Camera" in j and "amix=inputs=2" in j and " -t " not in j + " "
 
@@ -49,7 +50,8 @@ r.mark()
 res = r.stop()
 i = media_info(out)
 assert i["has_video"] and i["has_audio"] and (i["w"], i["h"]) == (1280, 720), i
-assert 4.4 < i["duration"] < 7.0, i                       # ~5.5 s recorded, pause excluded
+assert abs(i["duration"] - r._done) < 1.6, (i, r._done)     # file length ~= recorded wall time (pause excluded)
+assert r._done < 8.5                                        # the 1.5 s pause was NOT recorded
 assert res["segments"] == 2 and not os.path.exists(r.parts_dir)
 ch = open(res["chapters"]).read().splitlines()
 assert ch[0] == "00:00 Start" and ch[1].startswith("00:03 Intro done") and ch[2].startswith("00:0") and "Chapter 2" in ch[2], ch

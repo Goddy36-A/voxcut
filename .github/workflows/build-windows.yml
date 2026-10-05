@@ -43,6 +43,7 @@ jobs:
           python tests/test_maker.py
           python tests/test_recorder.py
           python tests/test_lecture.py
+          python tests/test_windows_capture.py
         env:
           QT_QPA_PLATFORM: offscreen
           PYTHONUTF8: "1"

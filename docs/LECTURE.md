@@ -34,6 +34,12 @@ Replaces recorders with 5-minute limits.
   recorder bar, and the whole GUI flow incl. "closing the app mid-lecture saves the video".
 * Both use FFmpeg test patterns + offscreen Qt, run in CI.
 
+## FFmpeg version note
+The EXE bundles the *latest* FFmpeg master build (see the workflow), which changes option rules between releases
+(v1.7.0 broke on `-thread_queue_size`). `tests/test_windows_capture.py` runs the real gdigrab/dshow command lines on a
+Windows runner with the bundled FFmpeg so such breakage fails CI. When testing locally, use the same build
+(BtbN FFmpeg-Builds `ffmpeg-master-latest-*`), not a distro FFmpeg.
+
 ## NOT verifiable in CI - check on a real Windows PC
 * real `gdigrab` capture of other apps, multi-monitor offsets, high-DPI scaling (we use physical pixels from `EnumDisplayMonitors`)
 * `dshow` device names and webcam resolution defaults; "Stereo Mix" availability
