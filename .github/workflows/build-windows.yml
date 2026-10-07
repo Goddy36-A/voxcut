@@ -49,6 +49,8 @@ jobs:
           bin\whisper\whisper-cli.exe --help 2>&1 | Select-Object -First 3
 
       - name: Test engine and GUI
+        id: tests
+        shell: bash          # bash -e: a failing test anywhere fails the step (PowerShell only checks the last command)
         run: |
           python tests/test_engine.py
           python tests/test_matting.py
@@ -73,15 +75,24 @@ jobs:
           QT_QPA_PLATFORM: offscreen
           PYTHONUTF8: "1"
         run: |
-          function Report($title, $out, $code) {
+          function Report($title, $out, $code, $always) {
             $t = ($out -replace "`r", "")
-            if ($t.Length -gt 3500) { $t = $t.Substring($t.Length - 3500) }
+            if ($t.Length -gt 3000) { $t = $t.Substring($t.Length - 3000) }
             $t = ($t -replace "%", "%25") -replace "`n", "%0A"
-            $lvl = if ($code -eq 0) { "notice" } else { "warning" }
-            Write-Output "::$lvl title=$title (exit $code)::$t"
+            if ($code -eq 0) { if ($always) { Write-Output "::notice title=$title::$t" } }
+            else { Write-Output "::warning title=$title FAILED (exit $code)::$t" }
+          }
+          if ("${{ steps.tests.outcome }}" -ne "success") {
+            $summary = @()
+            foreach ($n in "test_engine","test_matting","test_gui","test_cloud","test_maker","test_recorder","test_lecture","test_windows_capture","test_board_ai","test_asr","test_subtitles_ui") {
+              $o = & python "tests/$n.py" 2>&1 | Out-String
+              $summary += ("{0}: {1}" -f $(if ($LASTEXITCODE -eq 0) { "PASS" } else { "FAIL" }), $n)
+              Report $n $o $LASTEXITCODE $false
+            }
+            Write-Output ("::notice title=Test summary::" + (($summary -join "`n") -replace "`n", "%0A"))
           }
           $o = & python tests/test_windows_capture.py 2>&1 | Out-String
-          Report "Windows capture" $o $LASTEXITCODE
+          Report "Windows capture" $o $LASTEXITCODE $true
           try {
             $models = Join-Path $env:RUNNER_TEMP "models"
             New-Item -ItemType Directory -Force $models | Out-Null
@@ -90,9 +101,9 @@ jobs:
             $env:IDEAWOOD_TEST_MODEL = "$models\ggml-tiny.en.bin"
             $env:IDEAWOOD_REAL_ASR = "1"
             $o = & python tests/test_asr.py 2>&1 | Out-String
-            Report "Real speech recognition (tiny.en on JFK sample)" $o $LASTEXITCODE
+            Report "Real speech recognition (tiny.en on JFK sample)" $o $LASTEXITCODE $true
           } catch {
-            Report "Real speech recognition" ("Could not run: " + $_.Exception.Message) 1
+            Report "Real speech recognition" ("Could not run: " + $_.Exception.Message) 1 $true
           }
 
       - name: Build EXE

@@ -158,8 +158,9 @@ probe = subprocess.run([find_tool("ffprobe"), "-v", "error", "-show_entries", "s
 assert "mov_text" in probe and "h264" in probe, probe
 # 8) font folders containing a colon (e.g. C:/Windows/Fonts) must survive ffmpeg's filter-string parsing
 assert asr.escape_filter_value("C:\\Windows\\Fonts") == "C\\\\:/Windows/Fonts", asr.escape_filter_value("C:\\Windows\\Fonts")
-colon_dir = os.path.join(T, "fonts:with colon"); os.makedirs(colon_dir)
-out3 = os.path.join(T, "burned3.mp4")
-Job(asr.burn_cmd(src, "subs.ass", out3, ff, fontsdir=colon_dir), i["duration"], cwd=work).run()
-assert media_info(out3)["has_video"]
+if os.name != "nt":                           # ':' is not allowed in Windows folder names; there the real C:/Windows/Fonts
+    colon_dir = os.path.join(T, "fonts:with colon"); os.makedirs(colon_dir)      # path is already exercised in section 7
+    out3 = os.path.join(T, "burned3.mp4")
+    Job(asr.burn_cmd(src, "subs.ass", out3, ff, fontsdir=colon_dir), i["duration"], cwd=work).run()
+    assert media_info(out3)["has_video"]
 print("asr tests OK")
