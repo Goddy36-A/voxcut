@@ -22,6 +22,8 @@ Video & voice studio for Windows. One `.exe`, no installs. Rendering is 100% off
 - **Batch** processing, drag & drop, cancel, tray notification when finished, prevents PC sleep during renders
 - **Themes**: Midnight, Graphite, Ocean, Sunset, Forest, Light + custom accent colours and text size
 
+- **Subtitles (offline speech recognition)**: captions for any video/audio in many languages; edit, save SRT/VTT/TXT, burn in (word highlight) or add as a track. See [docs/SUBTITLES.md](docs/SUBTITLES.md)
+- **"I work as" workspaces** for tutors, churches, radio/podcasts, business, training/NGOs, software demos, journalists and coaches. See [docs/AUDIENCES.md](docs/AUDIENCES.md)
 - **Lecture recorder** (for tutors): record any screen/window/area with no time limit, webcam + mic, draw on screen, laser/spotlight, whiteboard, chapter markers, auto voice cleanup. See [docs/LECTURE.md](docs/LECTURE.md)
 - **Whiteboard + Board AI**: read handwriting and formulas, explain the board with a quiz, finish sketches, export lecture notes. See [docs/BOARD_AI.md](docs/BOARD_AI.md)
 - **Create video (AI)**: prompt -> finished MP4 with AI plan, narration, pictures/clips, captions and music. See [docs/CLOUD.md](docs/CLOUD.md)
@@ -37,7 +39,7 @@ pip install -r requirements.txt
 # put ffmpeg.exe + ffprobe.exe in ./bin (or have them on PATH)
 python main.py
 ```
-Tests: `python tests/test_engine.py`, `python tests/test_matting.py`, `python tests/test_gui.py` and `python tests/test_cloud.py` and `python tests/test_maker.py` (offline, fake cloud), `python tests/test_recorder.py` and `python tests/test_lecture.py` (recorder, whiteboard, overlay) and `python tests/test_board_ai.py` (mock Board AI server).
+Tests: `python tests/test_engine.py`, `python tests/test_matting.py`, `python tests/test_gui.py` and `python tests/test_cloud.py` and `python tests/test_maker.py` (offline, fake cloud), `python tests/test_recorder.py` and `python tests/test_lecture.py` (recorder, whiteboard, overlay) and `python tests/test_board_ai.py` (mock Board AI server), `python tests/test_asr.py` and `python tests/test_subtitles_ui.py` (speech recognition + subtitles).
 Contributors: start with [CHANGELOG.md](CHANGELOG.md) and [docs/CLOUD.md](docs/CLOUD.md). Regenerate the logo: `python tools/make_icon.py`.
 
 ## Notes

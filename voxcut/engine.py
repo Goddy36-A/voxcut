@@ -462,14 +462,15 @@ def plan_enhance(main: str, out: str, s: Settings, preview: Optional[tuple[float
 class Job:
     """Runs one ffmpeg process, reporting progress 0..100."""
 
-    def __init__(self, cmd: list[str], duration: float):
-        self.cmd, self.duration = cmd, max(duration, 0.1)
+    def __init__(self, cmd: list[str], duration: float, cwd: Optional[str] = None):
+        self.cmd, self.duration, self.cwd = cmd, max(duration, 0.1), cwd
         self.proc: Optional[subprocess.Popen] = None
         self.cancelled = False
 
     def run(self, on_progress: Callable[[float], None] = lambda p: None) -> None:
         self.proc = subprocess.Popen(self.cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                     text=True, encoding="utf-8", errors="replace", creationflags=no_window_flags())
+                                     text=True, encoding="utf-8", errors="replace", creationflags=no_window_flags(),
+                                     cwd=self.cwd)
         tail: list[str] = []
         for line in self.proc.stdout:  # type: ignore[union-attr]
             line = line.strip()

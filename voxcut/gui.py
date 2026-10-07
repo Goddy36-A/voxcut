@@ -13,6 +13,8 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QColorDialog, QComboBox,
 from . import __version__
 from .cloud import CloudClient, CloudError
 from .lecture_ui import LecturePanel
+from .subtitles_ui import SubtitlePanel
+from .workspaces import WORKSPACES
 from .maker import FORMATS as MAKER_FORMATS, Cancelled, make_video
 from .engine import (AUDIO_FORMATS, CODECS, COLOR_PRESETS, COMPRESSION, FIT_MODES, ORIENTATIONS, QUALITIES,
                      WM_POSITIONS, Job, Settings, plan_add_audio, plan_enhance, plan_extract_audio,
@@ -348,7 +350,7 @@ class Main(QMainWindow):
         col.setSpacing(0)
         t = QLabel("Ideawood Studio")
         t.setObjectName("title")
-        st = QLabel("Offline video & voice studio")
+        st = QLabel("Video, voice & lecture studio")
         st.setObjectName("muted")
         col.addWidget(t)
         col.addWidget(st)
@@ -357,6 +359,13 @@ class Main(QMainWindow):
         badge.setObjectName("badge")
         h.addWidget(badge, 0, Qt.AlignVCenter)
         h.addStretch(1)
+        h.addWidget(QLabel("I work as"))
+        self.workspace = combo(list(WORKSPACES))
+        self.workspace.setMinimumWidth(190)
+        self.workspace.setCurrentText(self.qs.value("workspace", "General"))
+        self.workspace.activated.connect(lambda _=0: self.apply_workspace(True))
+        h.addWidget(self.workspace)
+        h.addSpacing(14)
         h.addWidget(QLabel("Quick preset"))
         self.preset = combo(PRESETS)
         self.preset.setMinimumWidth(270)
@@ -444,7 +453,8 @@ class Main(QMainWindow):
         self.nav.setFixedWidth(176)
         self.stack = QStackedWidget()
         self.lecture = LecturePanel(self)
-        pages = [("Lecture recorder", self.lecture.page), ("Voice", self.page_voice()), ("Background", self.page_background()),
+        self.subtitles = SubtitlePanel(self)
+        pages = [("Lecture recorder", self.lecture.page), ("Subtitles", self.subtitles.page), ("Voice", self.page_voice()), ("Background", self.page_background()),
                  ("Format & Quality", self.page_format()),
                  ("Effects & Colour", self.page_effects()), ("Music", self.page_music()),
                  ("Intro / Outro", self.page_intro()), ("Audio / Video tools", self.page_tools()),
@@ -456,6 +466,7 @@ class Main(QMainWindow):
             self.stack.addWidget(page)
         self.nav.currentRowChanged.connect(self.stack.setCurrentIndex)
         self.nav.setCurrentRow(0)
+        self.apply_workspace(False)
         h.addWidget(self.nav)
         h.addWidget(self.stack, 1)
         return w
@@ -660,6 +671,8 @@ class Main(QMainWindow):
         self.cloud = CloudClient()
         f, l = card("Create a finished video", "Describe the video. Ideawood Studio gets a plan, narration, pictures/clips and "
                     "music online (needs your API key - set it in the AI Studio tab), then builds the MP4 here on your PC.")
+        self.mk_tpl = combo(["Start from a template..."])
+        self.mk_tpl.activated.connect(lambda i: self.mk_prompt.setPlainText(self.mk_tpl.itemData(i) or self.mk_prompt.toPlainText()))
         self.mk_prompt = QTextEdit()
         self.mk_prompt.setPlaceholderText("e.g. A five-part story about friendship with warm visuals")
         self.mk_prompt.setFixedHeight(90)
@@ -687,6 +700,7 @@ class Main(QMainWindow):
         self.mk_play.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(self.mk_out)))
         self.mk_folder.clicked.connect(
             lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(self.mk_out))))
+        l.addWidget(self.mk_tpl)
         l.addWidget(self.mk_prompt)
         l.addWidget(row("Format", self.mk_fmt))
         l.addWidget(self.mk_narr)
@@ -1122,6 +1136,31 @@ class Main(QMainWindow):
                 tasks.append((f"{base} + audio", lambda f=f, out=out, mode=mode: (*plan_add_audio(
                     f, audio, out, mode, self.a_vol.value(), self.a_loop.isChecked()), out)))
         self.begin(tasks, "Working")
+
+    def show_tab(self, name: str):
+        for i in range(self.nav.count()):
+            if self.nav.item(i).text() == name:
+                self.nav.setCurrentRow(i)
+                return
+
+    def apply_workspace(self, user_choice: bool = False):
+        """Set friendly defaults for the chosen profession (nothing is locked)."""
+        name = self.workspace.currentText()
+        ws = WORKSPACES.get(name) or WORKSPACES["General"]
+        self.qs.setValue("workspace", name)
+        self.lecture.name.setText(ws["file_name"])
+        st = ws["subtitle"]
+        self.subtitles.pos.setCurrentText(st["position"])
+        self.subtitles.size.setCurrentText(st["size"])
+        self.subtitles.hl.setChecked(st["highlight"])
+        self.mk_tpl.blockSignals(True)
+        self.mk_tpl.clear()
+        self.mk_tpl.addItem("Start from a template...", "")
+        for title, prompt in ws["templates"]:
+            self.mk_tpl.addItem(title, prompt)
+        self.mk_tpl.blockSignals(False)
+        if user_choice:
+            self.show_tab(ws["tab"])
 
     def closeEvent(self, e):
         self.lecture.shutdown()

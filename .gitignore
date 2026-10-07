@@ -6,3 +6,4 @@ dist/
 bin/ffmpeg*
 bin/ffprobe*
 .venv/
+bin/whisper/

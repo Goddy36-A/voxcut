@@ -216,14 +216,16 @@ class LecturePanel(QObject):
         self.play_btn = QPushButton("Play")
         self.open_btn = QPushButton("Open folder")
         self.queue_btn = QPushButton("Send to editor queue (trim, effects, music...)")
-        for b2 in (self.play_btn, self.open_btn, self.queue_btn):
+        self.subs_btn = QPushButton("Make subtitles for this recording")
+        self.subs_btn.clicked.connect(self.to_subtitles)
+        for b2 in (self.play_btn, self.open_btn, self.queue_btn, self.subs_btn):
             b2.hide()
         self.play_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(self.result_path)))
         self.open_btn.clicked.connect(
             lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(self.result_path))))
         self.queue_btn.clicked.connect(self.to_queue)
         for wdg in (self.start_btn, self.board_btn, self.test_btn, self.recover_btn, self.pbar, self.status,
-                    self.play_btn, self.open_btn, self.queue_btn):
+                    self.play_btn, self.open_btn, self.queue_btn, self.subs_btn):
             l5.addWidget(wdg)
         self._src_changed()
         return G.make_page(f5, f1, f2, f3, f4)
@@ -375,7 +377,7 @@ class LecturePanel(QObject):
         self.rec = R.Recorder(cfg)
         self._screen = screen
         self.result_path = ""
-        for b in (self.play_btn, self.open_btn, self.queue_btn):
+        for b in (self.play_btn, self.open_btn, self.queue_btn, self.subs_btn):
             b.hide()
         self.start_btn.setEnabled(False)
         if self.minimize_cb.isChecked():
@@ -541,7 +543,7 @@ class LecturePanel(QObject):
         if error:
             msg += f"\nRecording stopped early: {error}"
         self.status.setText(msg)
-        for b in (self.play_btn, self.open_btn, self.queue_btn):
+        for b in (self.play_btn, self.open_btn, self.queue_btn, self.subs_btn):
             b.show()
         self._mic_changed(self.mic.currentText())
 
@@ -598,8 +600,13 @@ class LecturePanel(QObject):
             return
         self.result_path = res["path"]
         self.status.setText(f"Recovered: {res['path']}")
-        for b in (self.play_btn, self.open_btn, self.queue_btn):
+        for b in (self.play_btn, self.open_btn, self.queue_btn, self.subs_btn):
             b.show()
+
+    def to_subtitles(self):
+        if self.result_path and os.path.isfile(self.result_path):
+            self.main.subtitles.load_file(self.result_path)
+            self.main.show_tab("Subtitles")
 
     def to_queue(self):
         if self.result_path and os.path.isfile(self.result_path):

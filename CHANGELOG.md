@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.9.0 - Subtitles (offline ASR) and workspaces for professionals
+* New **Subtitles** tab: offline speech recognition with whisper.cpp (bundled `whisper-cli`; speech model downloaded once, or use your own).
+  Editable caption table (edit, merge, split, delete, find/replace, shift timing, re-split), save SRT / VTT / TXT, burn into video
+  (position, size, colour, dark box, optional word-by-word highlight; sized for portrait and landscape) or add a selectable subtitle track.
+* Lecture recorder: **Make subtitles for this recording** button. Vocabulary hint for names and terms. English-only models refuse other languages.
+* New header menu **I work as**: tutor, church/ministry, radio/podcast, business, training/NGO, software demos, journalist, coach.
+  Sets default tab, file names, subtitle look and Create-video prompt templates (templates dropdown in Create video).
+* Header subtitle is now "Video, voice & lecture studio".
+* Fix found by testing: ffmpeg needs TWO backslashes before a colon in filter paths (affects `C:\Windows\Fonts` font folder).
+* New `asr.py`, `subtitles_ui.py`, `workspaces.py`, docs `SUBTITLES.md` / `AUDIENCES.md`, tests `test_asr.py` / `test_subtitles_ui.py`.
+* CI bundles whisper.cpp (pinned b5130) and reports real Windows capture + real speech recognition results as build annotations.
+
 ## 1.8.0 - Board AI for the whiteboard (includes the 1.7.1 recording fix)
 * Whiteboard: new **Board AI...** button (second toolbar row). Read handwriting and formulas (text + LaTeX), explain the
   board (title, summary, key points, quiz questions), finish a sketch (editable labels/arrows/boxes + preview), and save

@@ -34,6 +34,20 @@ jobs:
           Copy-Item (Join-Path $bin.DirectoryName "ffprobe.exe") bin\ffprobe.exe
           bin\ffmpeg.exe -version | Select-Object -First 1
 
+      - name: Download whisper.cpp (offline speech recognition, bundled)
+        shell: pwsh
+        run: |
+          # pinned build; the speech MODEL (75-466 MB) is not bundled - users download it once in the app
+          $url = "https://github.com/ggml-org/whisper.cpp/releases/download/b5130/whisper-bin-x64.zip"
+          Invoke-WebRequest $url -OutFile whisper.zip
+          Expand-Archive whisper.zip -DestinationPath whisper_tmp
+          $cli = Get-ChildItem whisper_tmp -Recurse -Filter whisper-cli.exe | Select-Object -First 1
+          New-Item -ItemType Directory -Force bin\whisper | Out-Null
+          Copy-Item $cli.FullName bin\whisper\whisper-cli.exe
+          Get-ChildItem $cli.DirectoryName -Filter *.dll | Copy-Item -Destination bin\whisper
+          Get-ChildItem bin\whisper | Select-Object Name, Length
+          bin\whisper\whisper-cli.exe --help 2>&1 | Select-Object -First 3
+
       - name: Test engine and GUI
         run: |
           python tests/test_engine.py
@@ -45,9 +59,41 @@ jobs:
           python tests/test_lecture.py
           python tests/test_windows_capture.py
           python tests/test_board_ai.py
+          python tests/test_asr.py
+          python tests/test_subtitles_ui.py
         env:
           QT_QPA_PLATFORM: offscreen
           PYTHONUTF8: "1"
+
+      - name: Report Windows-only results as annotations (real capture, real speech recognition)
+        if: always()
+        continue-on-error: true
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+          PYTHONUTF8: "1"
+        run: |
+          function Report($title, $out, $code) {
+            $t = ($out -replace "`r", "")
+            if ($t.Length -gt 3500) { $t = $t.Substring($t.Length - 3500) }
+            $t = ($t -replace "%", "%25") -replace "`n", "%0A"
+            $lvl = if ($code -eq 0) { "notice" } else { "warning" }
+            Write-Output "::$lvl title=$title (exit $code)::$t"
+          }
+          $o = & python tests/test_windows_capture.py 2>&1 | Out-String
+          Report "Windows capture" $o $LASTEXITCODE
+          try {
+            $models = Join-Path $env:RUNNER_TEMP "models"
+            New-Item -ItemType Directory -Force $models | Out-Null
+            Invoke-WebRequest "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin" -OutFile "$models\ggml-tiny.en.bin"
+            $env:WHISPER_CLI = (Resolve-Path "bin\whisper\whisper-cli.exe").Path
+            $env:IDEAWOOD_TEST_MODEL = "$models\ggml-tiny.en.bin"
+            $env:IDEAWOOD_REAL_ASR = "1"
+            $o = & python tests/test_asr.py 2>&1 | Out-String
+            Report "Real speech recognition (tiny.en on JFK sample)" $o $LASTEXITCODE
+          } catch {
+            Report "Real speech recognition" ("Could not run: " + $_.Exception.Message) 1
+          }
 
       - name: Build EXE
         shell: pwsh
@@ -55,6 +101,7 @@ jobs:
           pyinstaller --noconfirm --onefile --windowed --name IdeawoodStudio `
             --icon assets\icon.ico --add-data "assets;assets" --add-data "models;models" `
             --add-binary "bin\ffmpeg.exe;bin" --add-binary "bin\ffprobe.exe;bin" `
+            --add-data "bin\whisper;bin\whisper" `
             --hidden-import PySide6.QtMultimedia --hidden-import PySide6.QtMultimediaWidgets `
             --collect-all onnxruntime `
             main.py
