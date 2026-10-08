@@ -48,6 +48,26 @@ jobs:
           Get-ChildItem bin\whisper | Select-Object Name, Length
           bin\whisper\whisper-cli.exe --help 2>&1 | Select-Object -First 3
 
+      - name: Cache the bundled speech model
+        uses: actions/cache@v4
+        with:
+          path: models/whisper
+          key: whisper-model-ggml-base.en-v1
+
+      - name: Download the speech model that is bundled INSIDE the app
+        shell: pwsh
+        run: |
+          # English "Base" model (~148 MB). To bundle another one change $file here (and the cache key above).
+          $file = "ggml-base.en.bin"
+          New-Item -ItemType Directory -Force models\whisper | Out-Null
+          $dest = "models\whisper\$file"
+          if (-not (Test-Path $dest) -or (Get-Item $dest).Length -lt 140000000) {
+            Invoke-WebRequest "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/$file" -OutFile $dest
+          }
+          $len = (Get-Item $dest).Length
+          Write-Output "bundled model: $file = $len bytes"
+          if ($len -lt 140000000) { throw "Speech model download looks incomplete ($len bytes)" }
+
       - name: Test engine and GUI
         id: tests
         shell: bash          # bash -e: a failing test anywhere fails the step (PowerShell only checks the last command)
@@ -93,18 +113,23 @@ jobs:
           }
           $o = & python tests/test_windows_capture.py 2>&1 | Out-String
           Report "Windows capture" $o $LASTEXITCODE $true
-          try {
-            $models = Join-Path $env:RUNNER_TEMP "models"
-            New-Item -ItemType Directory -Force $models | Out-Null
-            Invoke-WebRequest "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin" -OutFile "$models\ggml-tiny.en.bin"
-            $env:WHISPER_CLI = (Resolve-Path "bin\whisper\whisper-cli.exe").Path
-            $env:IDEAWOOD_TEST_MODEL = "$models\ggml-tiny.en.bin"
-            $env:IDEAWOOD_REAL_ASR = "1"
-            $o = & python tests/test_asr.py 2>&1 | Out-String
-            Report "Real speech recognition (tiny.en on JFK sample)" $o $LASTEXITCODE $true
-          } catch {
-            Report "Real speech recognition" ("Could not run: " + $_.Exception.Message) 1 $true
-          }
+          $env:WHISPER_CLI = (Resolve-Path "bin\\whisper\\whisper-cli.exe").Path
+          $env:IDEAWOOD_TEST_MODEL = (Resolve-Path "models\\whisper\\ggml-base.en.bin").Path
+          $env:IDEAWOOD_REAL_ASR = "1"
+          $o = & python tests/test_asr.py 2>&1 | Out-String
+          Report "Real speech recognition (bundled base.en on JFK sample)" $o $LASTEXITCODE $true
+
+      - name: Verify the bundled speech model really transcribes (strict)
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+          PYTHONUTF8: "1"
+        run: |
+          $env:WHISPER_CLI = (Resolve-Path "bin\\whisper\\whisper-cli.exe").Path
+          $env:IDEAWOOD_TEST_MODEL = (Resolve-Path "models\\whisper\\ggml-base.en.bin").Path
+          $env:IDEAWOOD_REAL_ASR = "1"
+          python tests/test_asr.py
+          if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Build EXE
         shell: pwsh
@@ -117,6 +142,13 @@ jobs:
             --collect-all onnxruntime `
             main.py
           Copy-Item dist\IdeawoodStudio.exe "dist\IdeawoodStudio-${{ github.ref_name }}.exe"
+
+      - name: Check the model really is inside the EXE
+        shell: pwsh
+        run: |
+          $mb = [math]::Round((Get-Item dist\\IdeawoodStudio.exe).Length / 1MB)
+          Write-Output "EXE size: $mb MB"
+          if ($mb -lt 330) { throw "EXE is only $mb MB - the speech model was not bundled" }
 
       - uses: actions/upload-artifact@v4
         with:

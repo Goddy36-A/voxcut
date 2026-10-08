@@ -163,4 +163,13 @@ if os.name != "nt":                           # ':' is not allowed in Windows fo
     out3 = os.path.join(T, "burned3.mp4")
     Job(asr.burn_cmd(src, "subs.ass", out3, ff, fontsdir=colon_dir), i["duration"], cwd=work).run()
     assert media_info(out3)["has_video"]
+# 9) a model shipped inside the app is found with no download, and shown as built in
+bund = os.path.join(T, "bundled"); os.makedirs(bund)
+open(os.path.join(bund, "ggml-base.en.bin"), "wb").write(b"\0" * 11_000_000)
+os.environ["IDEAWOOD_BUNDLED_MODELS"] = bund
+os.environ["IDEAWOOD_MODELS"] = os.path.join(T, "empty_user_models")          # nothing downloaded by the user
+assert asr.find_model("base.en") == os.path.join(bund, "ggml-base.en.bin") and asr.is_bundled("base.en")
+assert asr.installed_models() == ["base.en"] and asr.find_model("small") is None and not asr.is_bundled("small")
+open(asr.model_file("base.en"), "wb").write(b"\0" * 11_000_000)                # a user copy wins over the built-in one
+assert asr.find_model("base.en") == asr.model_file("base.en") and not asr.is_bundled("base.en")
 print("asr tests OK")

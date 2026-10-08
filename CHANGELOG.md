@@ -9,6 +9,9 @@
   Sets default tab, file names, subtitle look and Create-video prompt templates (templates dropdown in Create video).
 * Header subtitle is now "Video, voice & lecture studio".
 * Fix found by testing: ffmpeg needs TWO backslashes before a colon in filter paths (affects `C:\Windows\Fonts` font folder).
+* **The speech model is bundled in the EXE** (English Base, ~148 MB): subtitles work immediately after install, fully offline.
+  Trade-off: the EXE is about 370 MB and starts a little slower (single-file EXEs unpack on launch). Other models are optional downloads.
+  The build verifies the bundled model transcribes real speech and that it is really inside the EXE.
 * New `asr.py`, `subtitles_ui.py`, `workspaces.py`, docs `SUBTITLES.md` / `AUDIENCES.md`, tests `test_asr.py` / `test_subtitles_ui.py`.
 * CI bundles whisper.cpp (pinned b5130) and reports real Windows capture + real speech recognition results as build annotations.
 

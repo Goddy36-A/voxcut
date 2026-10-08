@@ -67,8 +67,39 @@ def model_file(key: str) -> str:
     return os.path.join(models_dir(), MODELS[key][1])
 
 
+def bundled_models_dirs() -> List[str]:
+    """Folders holding models shipped *inside* the app (EXE) - no download needed for these."""
+    dirs = []
+    if os.environ.get("IDEAWOOD_BUNDLED_MODELS"):
+        dirs.append(os.environ["IDEAWOOD_BUNDLED_MODELS"])
+    base = getattr(sys, "_MEIPASS", None)
+    if base:
+        dirs.append(os.path.join(base, "models", "whisper"))
+    dirs.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models", "whisper"))
+    return dirs
+
+
+def _ok(p: str) -> bool:
+    return os.path.isfile(p) and os.path.getsize(p) > 10_000_000
+
+
+def find_model(key: str) -> Optional[str]:
+    """Path of an installed model: the user's downloaded copy first, otherwise one built into the app."""
+    fname = MODELS[key][1]
+    for d in [models_dir()] + bundled_models_dirs():
+        p = os.path.join(d, fname)
+        if _ok(p):
+            return p
+    return None
+
+
+def is_bundled(key: str) -> bool:
+    p = find_model(key)
+    return bool(p) and os.path.dirname(p) in bundled_models_dirs()
+
+
 def installed_models() -> List[str]:
-    return [k for k in MODELS if os.path.isfile(model_file(k)) and os.path.getsize(model_file(k)) > 10_000_000]
+    return [k for k in MODELS if find_model(k)]
 
 
 def find_whisper_cli() -> str:

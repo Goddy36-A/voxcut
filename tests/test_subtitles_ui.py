@@ -108,6 +108,14 @@ sp.load_file(os.path.join(T, "out.srt")); assert sp.src.endswith("out.srt")
 out_path[0] = os.path.join(T, "nope.mp4"); n_msgs = len(info_msgs); sp.burn()
 assert len(info_msgs) > n_msgs                                   # an .srt is not a video -> friendly message
 
+# 6b) a model shipped inside the app: listed as built in, no download button, usable at once
+bund = os.path.join(T, "bundled"); os.makedirs(bund, exist_ok=True)
+open(os.path.join(bund, "ggml-small.en.bin"), "wb").write(b"\0" * 11_000_000)
+os.environ["IDEAWOOD_BUNDLED_MODELS"] = bund
+sp.qs.setValue("asr_model", "small.en"); sp._fill_models()
+assert "built in" in sp.model.currentText() and sp.dl_btn.isHidden() and "Built into" in sp.model_status.text()
+assert sp._model_path() == os.path.join(bund, "ggml-small.en.bin")
+
 # 7) recorder -> subtitles hand-off, and workspaces
 w.lecture.result_path = video; w.lecture.to_subtitles()
 assert w.nav.currentItem().text() == "Subtitles" and sp.src == video

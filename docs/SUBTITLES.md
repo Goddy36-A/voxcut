@@ -14,7 +14,10 @@ Turn any video or audio into captions, **offline**. Replaces paid captioning too
    or add a **selectable subtitle track** (mov_text, no re-encode).
 
 ## Models
-Not bundled (EXE size). Downloaded once from Hugging Face (`ggerganov/whisper.cpp`) to
+The release EXE **bundles the English Base model** (`models/whisper/ggml-base.en.bin`, ~148 MB, fetched at build time by the
+workflow - never committed to git), so a fresh install transcribes with no download and no internet. To bundle another model change
+`$file` in the workflow step "Download the speech model that is bundled INSIDE the app" (and the cache key). Other models are
+downloaded once from Hugging Face (`ggerganov/whisper.cpp`) to
 `%LOCALAPPDATA%/IdeawoodStudio/models` (override `IDEAWOOD_MODELS`), resumable, size-checked; or "Use a model file I already have".
 Tiny/Base/Small English-only (75/142/466 MB) and Base/Small multilingual (142/466 MB). **Whisper does not support Luganda**
 (Swahili and ~30 other languages are listed in `asr.LANGUAGES`). English-only models are refused for other languages.

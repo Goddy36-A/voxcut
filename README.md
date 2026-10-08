@@ -22,7 +22,7 @@ Video & voice studio for Windows. One `.exe`, no installs. Rendering is 100% off
 - **Batch** processing, drag & drop, cancel, tray notification when finished, prevents PC sleep during renders
 - **Themes**: Midnight, Graphite, Ocean, Sunset, Forest, Light + custom accent colours and text size
 
-- **Subtitles (offline speech recognition)**: captions for any video/audio in many languages; edit, save SRT/VTT/TXT, burn in (word highlight) or add as a track. See [docs/SUBTITLES.md](docs/SUBTITLES.md)
+- **Subtitles (offline speech recognition)**: captions for any video/audio, with the English speech model built in (no download; other languages are an optional download); edit, save SRT/VTT/TXT, burn in (word highlight) or add as a track. See [docs/SUBTITLES.md](docs/SUBTITLES.md)
 - **"I work as" workspaces** for tutors, churches, radio/podcasts, business, training/NGOs, software demos, journalists and coaches. See [docs/AUDIENCES.md](docs/AUDIENCES.md)
 - **Lecture recorder** (for tutors): record any screen/window/area with no time limit, webcam + mic, draw on screen, laser/spotlight, whiteboard, chapter markers, auto voice cleanup. See [docs/LECTURE.md](docs/LECTURE.md)
 - **Whiteboard + Board AI**: read handwriting and formulas, explain the board with a quiz, finish sketches, export lecture notes. See [docs/BOARD_AI.md](docs/BOARD_AI.md)

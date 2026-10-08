@@ -163,7 +163,8 @@ class SubtitlePanel(QObject):
         self.model.clear()
         inst = set(asr.installed_models())
         for key, (label, _f, _mb, _ml) in asr.MODELS.items():
-            self.model.addItem(("✓ " if key in inst else "") + label, key)
+            tag = " - built in" if asr.is_bundled(key) else ""
+            self.model.addItem(("✓ " if key in inst else "") + label + tag, key)
         self.model.addItem(CUSTOM, "custom")
         i = self.model.findData(cur)
         self.model.setCurrentIndex(max(i, 0))
@@ -177,7 +178,7 @@ class SubtitlePanel(QObject):
         k = self._model_key()
         if k == "custom":
             return self.qs.value("asr_custom_model", "")
-        return asr.model_file(k) if k in asr.installed_models() else ""
+        return asr.find_model(k) or ""
 
     def _model_changed(self, *_):
         k = self._model_key()
@@ -195,7 +196,8 @@ class SubtitlePanel(QObject):
         ok = k in asr.installed_models()
         self.dl_btn.setVisible(not ok)
         mb, multi = asr.MODELS[k][2], asr.MODELS[k][3]
-        self.model_status.setText(("Installed - ready to use. " if ok else f"Not downloaded yet (about {mb} MB). ")
+        self.model_status.setText(("Built into Ideawood Studio - ready to use, no download. " if asr.is_bundled(k)
+                                   else "Installed - ready to use. " if ok else f"Not downloaded yet (about {mb} MB). ")
                                   + ("Understands many languages." if multi else "English only."))
 
     def download(self):

@@ -7,3 +7,4 @@ bin/ffmpeg*
 bin/ffprobe*
 .venv/
 bin/whisper/
+models/whisper/
