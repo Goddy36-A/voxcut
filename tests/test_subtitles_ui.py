@@ -7,6 +7,8 @@ os.environ["IDEAWOOD_MODELS"] = os.path.join(T, "models")
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from PySide6.QtWidgets import QApplication
 from voxcut import asr, subtitles_ui as SU
+_orig_dirs = asr.bundled_models_dirs        # hermetic: only a bundled dir given through the env var counts (CI has the real one)
+asr.bundled_models_dirs = lambda: [d for d in _orig_dirs() if d == os.environ.get("IDEAWOOD_BUNDLED_MODELS")]
 from voxcut.engine import media_info
 from voxcut.paths import find_tool
 
