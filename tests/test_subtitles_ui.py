@@ -110,6 +110,17 @@ sp.load_file(os.path.join(T, "out.srt")); assert sp.src.endswith("out.srt")
 out_path[0] = os.path.join(T, "nope.mp4"); n_msgs = len(info_msgs); sp.burn()
 assert len(info_msgs) > n_msgs                                   # an .srt is not a video -> friendly message
 
+# 6a) audio-only file (with cover art): transcription path works, burn/embed refuse politely
+subprocess.run([ff, "-y", "-v", "error", "-f", "lavfi", "-i", "sine=f=300:d=3", os.path.join(T, "a.mp3")], check=True)
+subprocess.run([ff, "-y", "-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=300x300:d=1", "-frames:v", "1", os.path.join(T, "c.png")], check=True)
+subprocess.run([ff, "-y", "-v", "error", "-i", os.path.join(T, "a.mp3"), "-i", os.path.join(T, "c.png"), "-map", "0", "-map", "1", "-c", "copy",
+                "-disposition:v:0", "attached_pic", os.path.join(T, "art.mp3")], check=True)
+keep_src = sp.src
+sp.load_file(os.path.join(T, "art.mp3")); n_msgs = len(info_msgs)
+sp.burn(); sp.embed()
+assert len(info_msgs) == n_msgs + 2 and "no picture" in info_msgs[-1] and sp.worker is None
+sp.load_file(keep_src)
+
 # 6b) a model shipped inside the app: listed as built in, no download button, usable at once
 bund = os.path.join(T, "bundled"); os.makedirs(bund, exist_ok=True)
 open(os.path.join(bund, "ggml-small.en.bin"), "wb").write(b"\0" * 11_000_000)

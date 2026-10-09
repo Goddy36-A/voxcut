@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased
+* Subtitles: MP3/M4A files with cover art are now treated as audio-only (burn-in/track refuse politely; SRT/VTT/TXT still work).
+
 ## 1.9.0 - Subtitles (offline ASR) and workspaces for professionals
 * New **Subtitles** tab: offline speech recognition with whisper.cpp (bundled `whisper-cli`; speech model downloaded once, or use your own).
   Editable caption table (edit, merge, split, delete, find/replace, shift timing, re-split), save SRT / VTT / TXT, burn into video

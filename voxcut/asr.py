@@ -447,6 +447,17 @@ def _line_break_after(c: Cue) -> int:
     return len(first) - 1
 
 
+def has_real_video(path: str) -> bool:
+    """True only for a real moving-picture stream. An MP3/M4A with cover art counts as audio-only."""
+    try:
+        r = subprocess.run([find_tool("ffprobe"), "-v", "error", "-select_streams", "v", "-show_entries",
+                            "stream=codec_name:stream_disposition=attached_pic", "-of", "json", path],
+                           capture_output=True, text=True, errors="replace", creationflags=no_window_flags())
+        return any(not (st.get("disposition") or {}).get("attached_pic") for st in json.loads(r.stdout).get("streams", []))
+    except Exception:  # noqa: BLE001
+        return False
+
+
 # --------------------------------------------------------------------------- audio extraction + recognition
 def extract_audio(src: str, dst_wav: str, should_cancel=lambda: False) -> float:
     """Any audio/video -> 16 kHz mono WAV (what whisper wants). Returns the duration in seconds."""

@@ -156,6 +156,14 @@ subprocess.run(asr.embed_cmd(src, os.path.join(T, "s.srt"), emb, "eng", ff), che
 probe = subprocess.run([find_tool("ffprobe"), "-v", "error", "-show_entries", "stream=codec_name,codec_type", "-of", "csv=p=0", emb],
                        capture_output=True, text=True).stdout
 assert "mov_text" in probe and "h264" in probe, probe
+# 7b) audio-only files, including MP3 with cover art, are NOT treated as video
+subprocess.run([ff, "-y", "-v", "error", "-f", "lavfi", "-i", "sine=f=300:d=3", os.path.join(T, "plain.mp3")], check=True)
+subprocess.run([ff, "-y", "-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=300x300:d=1", "-frames:v", "1", os.path.join(T, "cover.png")], check=True)
+subprocess.run([ff, "-y", "-v", "error", "-i", os.path.join(T, "plain.mp3"), "-i", os.path.join(T, "cover.png"), "-map", "0", "-map", "1",
+                "-c", "copy", "-disposition:v:0", "attached_pic", os.path.join(T, "art.mp3")], check=True)
+assert not asr.has_real_video(os.path.join(T, "plain.mp3")) and not asr.has_real_video(os.path.join(T, "art.mp3"))
+assert asr.has_real_video(src) and not asr.has_real_video(os.path.join(T, "missing.mp4"))
+
 # 8) font folders containing a colon (e.g. C:/Windows/Fonts) must survive ffmpeg's filter-string parsing
 assert asr.escape_filter_value("C:\\Windows\\Fonts") == "C\\\\:/Windows/Fonts", asr.escape_filter_value("C:\\Windows\\Fonts")
 if os.name != "nt":                           # ':' is not allowed in Windows folder names; there the real C:/Windows/Fonts

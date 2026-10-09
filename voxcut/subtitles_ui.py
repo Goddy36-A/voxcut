@@ -297,7 +297,7 @@ class SubtitlePanel(QObject):
     def _transcribed(self, tr: asr.Transcript):
         self.tr = tr
         info = media_info(self.src)
-        self.maxchars.setValue(asr.auto_max_chars(info["w"], info["h"], self.size.currentText()) if info["has_video"] else 42)
+        self.maxchars.setValue(asr.auto_max_chars(info["w"], info["h"], self.size.currentText()) if asr.has_real_video(self.src) else 42)
         self._make_cues()
         self._busy(False, f"Done: {len(self.cues)} captions"
                    + (f" (language: {tr.language})" if tr.language else "")
@@ -456,8 +456,9 @@ class SubtitlePanel(QObject):
             QMessageBox.information(self.main, "Ideawood Studio", "Choose the video file first.")
             return None
         info = media_info(self.src)
-        if not info["has_video"]:
-            QMessageBox.information(self.main, "Ideawood Studio", "This is an audio file - save the SRT/VTT instead.")
+        if not asr.has_real_video(self.src):
+            QMessageBox.information(self.main, "Ideawood Studio", "This is an audio file, so there is no picture to put "
+                                    "the subtitles on. Save the SRT/VTT/TXT instead.")
             return None
         if not self.read_cues():
             QMessageBox.information(self.main, "Ideawood Studio", "Create or add some captions first.")
